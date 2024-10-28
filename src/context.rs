@@ -4,7 +4,7 @@ use arbitrary::{Arbitrary, Unstructured};
 use pretty::{Pretty, DocAllocator, DocBuilder, BoxAllocator};
 
 /// General BTreeMap context
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Ctx<K, V>(BTreeMap<K, V>);
 
 /// Pretty printer instance for Ctx
@@ -165,7 +165,9 @@ impl<K: Ord, V> Ctx<K, V> {
         }
         diff
     }
-
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
     pub fn get(&self, k: &K) -> Option<&V> {
         self.0.get(k)
     }

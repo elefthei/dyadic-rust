@@ -8,11 +8,11 @@ use arbitrary::{Arbitrary, Result, Unstructured};
 /// Represents a type-level positive, linear expression
 /// ex: 2a + 3b + 4c + 5
 /// The invariant is that multipliers are non-zero
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Lin<Id>(Ctx<Id, u8>, u8);
 
 /// Represents a type-level power of two (2^Lin)
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Bin<Id> { exp: Lin<Id> }
 
 /// Identity element of addition is 0
@@ -53,8 +53,8 @@ impl<T: Ord> Lin<T> {
     /// true:  2*a + b <= 3*a + b + c
     ///        {} <= a
     /// false: 4*a <= 3*a + b + c
-    /// None:  b <= c
-    pub fn leq(&self, other: &Self) -> Option<bool> {
+    ///        b <= c
+    pub fn leq(&self, other: &Self) -> bool {
         let mut le = true;
         for (k, v) in self.0.iter() {
             if let Some(vr) = other.0.get(&k) {
@@ -62,10 +62,10 @@ impl<T: Ord> Lin<T> {
                     le = false;
                 }
             } else {
-                return None;
+                le = false;
             }
         }
-        Some(le && self.1 <= other.1)
+        le && self.1 <= other.1
     }
 }
 
@@ -164,7 +164,7 @@ impl<T: Ord> Bin<T> {
         }
     }
     /// Partial order extends to [Bin] as [2^-] is monotone
-    pub fn leq(&self, other: &Self) -> Option<bool> {
+    pub fn leq(&self, other: &Self) -> bool {
         self.exp.leq(&other.exp)
     }
     /// Logarithm with remainder
@@ -195,15 +195,6 @@ impl<T: Ord> Bin<T> {
             self.exp.0.intersection_with(other.exp.0, &|a, b| std::cmp::min(a, b)),
             std::cmp::min(self.exp.1, other.exp.1)
         )}
-    }
-
-    /// Minimum (partial) of two exponents of two
-    pub fn min(self, other: Self) -> Option<Self> {
-        if self.leq(&other)? {
-            Some(self)
-        } else {
-            Some(other)
-        }
     }
 }
 
@@ -253,18 +244,23 @@ where
     D: DocAllocator<'a, A>,
     D::Doc: Clone,
     A: 'a + Clone,
-    T: Pretty<'a, D, A> + Clone
+    T: Pretty<'a, D, A> + Clone + Ord
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        allocator.intersperse(self.0.into_iter()
-                    .map(|(k, v)| allocator.text(v.to_string()).append(k.pretty(allocator))), "+")
+        if self.0.is_empty() {
+            allocator.text(format!("{}", self.1))
+        } else {
+            allocator.intersperse(self.0.into_iter()
+                    .map(|(k, v)| allocator.text(v.to_string()).append(k.pretty(allocator))),
+                "+").append(allocator.text(format!("{}", self.1)))
+        }
     }
 }
 
 /// Display instance calls the pretty printer
 impl<'a, T> fmt::Display for Lin<T>
 where
-    T: Pretty<'a, BoxAllocator, ()> + Clone
+    T: Pretty<'a, BoxAllocator, ()> + Clone + Ord
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         <Lin<T> as Pretty<'_, BoxAllocator, ()>>::pretty(self.clone(), &BoxAllocator)
@@ -285,7 +281,7 @@ where
     D: DocAllocator<'a, A>,
     D::Doc: Clone,
     A: 'a + Clone,
-    T: Pretty<'a, D, A> + Clone
+    T: Pretty<'a, D, A> + Clone + Ord
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         allocator.text("2^(")
@@ -297,7 +293,7 @@ where
 /// Display instance calls the pretty printer
 impl<'a, T> fmt::Display for Bin<T>
 where
-    T: Pretty<'a, BoxAllocator, ()> + Clone
+    T: Pretty<'a, BoxAllocator, ()> + Clone + Ord
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         <Bin<T> as Pretty<'_, BoxAllocator, ()>>::pretty(self.clone(), &BoxAllocator)
@@ -338,27 +334,27 @@ fn test_leq_lin() {
             &(Lin::lit(2) + Lin::var("a")),
             &(Lin::term("a", 2) + Lin::var("b") + Lin::lit(4))
         ),
-        Some(true)
+        true
     );
     assert_eq!(
         Lin::leq(
             &(Lin::lit(2) + Lin::var("c")),
             &(Lin::term("a", 2) + Lin::var("b") + Lin::lit(4))
         ),
-        None
+        false
     );
     assert_eq!(
         Lin::leq(
-            &(Lin::term("a", 3) + Lin::var("c")),
+            &(Lin::term("a", 3) + Lin::var("b")),
             &(Lin::term("a", 2) + Lin::var("b") + Lin::lit(4))
         ),
-        Some(false)
+        false
     );
 }
 
 #[test]
 fn test_lin_specialize() {
-    let mut l = Lin::var("x") + Lin::var("y") + Lin::lit(1);
+    let l = Lin::var("x") + Lin::var("y") + Lin::lit(1);
 
     let mut l1 = l.clone();
     l1.specialize("x", 2).unwrap();
@@ -401,15 +397,8 @@ fn test_bin_lcm() {
 
 #[test]
 fn test_bin_log2() {
-    assert_eq!(Bin::<&str>::log2(9), (Bin::lit(3), 1));
-    assert_eq!(Bin::<&str>::log2(-129), (Bin::lit(7), -1));
-}
-
-#[test]
-fn test_bin_min() {
-    let a = Bin::lit(3) * Bin::var("y") * Bin::var("x");
-    let b = Bin::lit(2) * Bin::var("x");
-    assert_eq!(a.min(b.clone()), Some(b));
+    assert_eq!(Bin::<&str>::log2(12), (Bin::lit(2), 3));
+    assert_eq!(Bin::<&str>::log2(-96), (Bin::lit(5), -3));
 }
 
 #[test]

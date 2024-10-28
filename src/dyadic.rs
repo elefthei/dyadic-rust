@@ -123,11 +123,13 @@ impl<T: fmt::Display + Ord + Clone> Specializable<T> for DyadicMono<T> {
     fn specialize(&mut self, id: T, val: u8) -> Result<(), SpecializeError<T>> {
         if let Some(v) = self.terms.remove(&id) {
             self.mult *= val.pow(v as u32) as i32;
-            self.bin.specialize(id, val)?;
+            // We already performed [id] substitution so don't fail
+            self.bin.specialize(id, val).unwrap_or(());
             self.normalize();
             Ok(())
         } else {
-            Err(SpecializeError::VarNotFound(id))
+            // Fail if no substitution performed
+            self.bin.specialize(id, val)
         }
     }
 
@@ -151,7 +153,7 @@ impl<T: Ord> Normalizable for DyadicMono<T> {
 impl<'a, D, A, T> Pretty<'a, D, A> for DyadicMono<T>
 where
     D: DocAllocator<'a, A>,
-    T: Pretty<'a, D, A> + Clone,
+    T: Pretty<'a, D, A> + Clone + Ord,
     D::Doc: Clone,
     A: 'a + Clone,
 {
@@ -166,6 +168,7 @@ where
                             k.pretty(allocator).append(allocator.text(format!("^{}", v)))
                         })
                     , "*"))
+            .append(allocator.text("*"))
             .append(self.bin.pretty(allocator))
     }
 }
@@ -208,10 +211,11 @@ fn test_dyadicmono_mul() {
 }
 
 #[test]
-fn test_specialize() {
+fn test_dyadicmono_specialize() {
     let l = DyadicMono::from("x") * DyadicMono::from("y") * DyadicMono::from(2);
 
     let mut l1 = l.clone();
+    println!("Before: {}", l1);
     l1.specialize("x", 2).unwrap();
     // 2*x*y -> x = 2 -> 4*y
     assert_eq!(l1, DyadicMono::var("y") * DyadicMono::lit(4));
@@ -354,7 +358,7 @@ impl<T: Ord + fmt::Display + Clone> Specializable<T> for Dyadic<T> {
     }
 }
 
-impl<T: Ord + Clone> Normalizable for Dyadic<T> {
+impl<T: Ord + Clone + fmt::Debug> Normalizable for Dyadic<T> {
     fn normalize(&mut self) {
         let mut acc = Bin::lit(0);
         for v in self.numer.iter() {
@@ -364,8 +368,11 @@ impl<T: Ord + Clone> Normalizable for Dyadic<T> {
         }
 
         let mut numer = Set::new();
-        for v in self.numer.iter() {
-            numer.insert(v.clone().div_bin(acc.clone()));
+        for v in self.numer.clone().into_iter() {
+            let (p, r) = v.div_bin(acc.clone());
+            numer.insert(p);
+            // Dividing by gcd should yield 0 remainder
+            assert_eq!(r, Bin::default());
         }
 
         self.numer = numer;

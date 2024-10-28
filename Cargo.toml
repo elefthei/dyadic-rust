@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 arbitrary = { version = "1.3.2", features = ["derive"] }
+hashconsing = "1.6.0"
 pretty = "0.12.3"
 thiserror = "1.0.65"
 
