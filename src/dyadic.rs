@@ -3,8 +3,7 @@ use std::ops::{Add, Sub, Mul, MulAssign, Div};
 use pretty::{BoxAllocator, Pretty, DocAllocator, DocBuilder};
 use crate::context::{Ctx, Set};
 use crate::traits::{Specializable, SpecializeError, Normalizable};
-use crate::bin::{Bin, Lin};
-use thiserror::Error;
+use crate::bin::Bin;
 
 use arbitrary::{Arbitrary, Unstructured};
 
@@ -14,7 +13,7 @@ use arbitrary::{Arbitrary, Unstructured};
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct DyadicMono<Id> {
     mult: i32,          // 3
-    terms: Ctx<Id, u8>, //a * b^2 * c^3
+    terms: Ctx<Id, u8>, // a * b^2 * c^3
     bin: Bin<Id>        // 2^(d+e+f+2)
 }
 
@@ -186,7 +185,7 @@ where
 }
 
 /// Arbitrary instance for DyadicMono
-impl<'a, T: Ord + Arbitrary<'a>> Arbitrary<'a> for DyadicMono<T> {
+impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for DyadicMono<T> {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(DyadicMono {
             mult : u.int_in_range(0..=9)?,

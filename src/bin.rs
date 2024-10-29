@@ -87,6 +87,16 @@ impl<T: Ord + Clone> Add for Lin<T> {
     }
 }
 
+impl<T: Ord + Clone> Add for &Lin<T> {
+    type Output = Lin<T>;
+    /// Add two linear terms
+    fn add(self, other: Self) -> Self::Output {
+        let mut c = self.clone();
+        c += other.clone();
+        c
+    }
+}
+
 impl<T: Ord + Clone> Sub for Lin<T> {
     type Output = (Lin<T>, Lin<T>);
     /// Subtract two linear terms (with remainder)
@@ -116,6 +126,14 @@ impl<T: Ord + Clone> Sub for Lin<T> {
         nvars.retain(|_, v| *v > 0);
         mvars.retain(|_, v| *v > 0);
        (Lin(nvars, n), Lin(mvars, m))
+    }
+}
+
+impl<T: Ord + Clone> Sub for &Lin<T> {
+    type Output = (Lin<T>, Lin<T>);
+    /// Subtract two linear terms (with remainder)
+    fn sub(self, other: Self) -> Self::Output {
+        self.clone().sub(other.clone())
     }
 }
 
@@ -270,9 +288,11 @@ where
 }
 
 /// Arbitrary instance for Lin
-impl<'a, T: Ord + Arbitrary<'a>> Arbitrary<'a> for Lin<T> {
+impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for Lin<T> {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
-        Ok(Lin(Ctx::arbitrary(u)?, u.int_in_range(0..=9)?))
+        let mut l = Lin(Ctx::arbitrary(u)?, u.int_in_range(0..=9)?);
+        l.normalize();
+        Ok(l)
     }
 }
 
@@ -303,7 +323,7 @@ where
 }
 
 /// Arbitrary instance for Bin
-impl<'a, T: Ord + Arbitrary<'a>> Arbitrary<'a> for Bin<T> {
+impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for Bin<T> {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
         Ok(Bin { exp: Lin::arbitrary(u)? })
     }
@@ -421,4 +441,56 @@ fn test_bin_specialize() {
         l3.specialize("z", 2),
         Err(SpecializeError::VarNotFound("z"))
     );
+}
+
+use arbtest::arbtest;
+
+#[test]
+fn test_lin_add_prop() {
+    // Associativity
+    arbtest(|u| {
+        let a = u.arbitrary::<Lin<char>>()?;
+        let b = u.arbitrary::<Lin<char>>()?;
+        let c = u.arbitrary::<Lin<char>>()?;
+        assert_eq!(&a + &(&b + &c), &(&a + &b) + &c);
+        Ok(())
+    });
+
+    // Commutativity
+    arbtest(|u| {
+        let a = u.arbitrary::<Lin<char>>()?;
+        let b = u.arbitrary::<Lin<char>>()?;
+        assert_eq!(&a + &b, &b + &a);
+        Ok(())
+    });
+}
+
+#[test]
+fn test_lin_sub_prop() {
+    // Cancelativity
+    arbtest(|u| {
+        let a = u.arbitrary::<Lin<char>>()?;
+        assert_eq!(&a - &a, (Lin::default(), Lin::default()));
+        Ok(())
+    });
+
+    // Subtraction is the inverse of addition
+    arbtest(|u| {
+        let a = u.arbitrary::<Lin<char>>()?;
+        let b = u.arbitrary::<Lin<char>>()?;
+        assert_eq!(&a + &b - a, (b, Lin::default()));
+        Ok(())
+    });
+}
+
+
+#[test]
+fn test_lin_leq() {
+    // Reflexivity
+    arbtest(|u| {
+        let mut a = u.arbitrary::<Lin<char>>()?;
+        a.normalize();
+        assert!(&a.leq(&a));
+        Ok(())
+    });
 }
