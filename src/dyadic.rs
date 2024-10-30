@@ -298,7 +298,7 @@ impl<T: Ord + Clone + fmt::Debug> Add for Dyadic<T> {
     type Output = Dyadic<T>;
     fn add(self, other: Self) -> Self::Output {
         // Compute denominator as the LCM of the two denominators
-        let denom = self.denom.lcm(other.denom.clone());
+        let denom = self.denom.lcm(&other.denom);
 
         // Compute the left multiplicative factor (remainder is 0 by LCM property)
         let (lm, lr) = denom.clone().div(self.denom);

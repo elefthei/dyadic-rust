@@ -79,12 +79,12 @@ where
 }
 
 /// Arbitrary instance for Ctx
-impl<'a, K: Arbitrary<'a> + Ord, V: Arbitrary<'a>> Arbitrary<'a> for Ctx<K, V> {
+impl<'a, K: Arbitrary<'a> + Ord> Arbitrary<'a> for Ctx<K, u8> {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self, arbitrary::Error> {
         let n: u8 = u.int_in_range(0..=9)?;
         let mut vars = BTreeMap::new();
         for _ in 0..n {
-            vars.insert(K::arbitrary(u)?, V::arbitrary(u)?);
+            vars.insert(K::arbitrary(u)?, u.int_in_range(0..=12)?);
         }
         Ok(Ctx(vars))
     }

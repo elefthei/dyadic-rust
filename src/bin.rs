@@ -200,9 +200,9 @@ impl<T: Ord> Bin<T> {
     }
 
     /// Least common multiple of two exponents of two
-    pub fn lcm(&self, other: Self) -> Self where T: Clone {
+    pub fn lcm(&self, other: &Self) -> Self where T: Clone {
         Bin { exp: Lin(
-            self.exp.0.union_with(other.exp.0, &|a, b| std::cmp::max(a, b)),
+            self.exp.0.union_with(other.exp.0.clone(), &|a, b| std::cmp::max(a, b)),
             std::cmp::max(self.exp.1, other.exp.1)
         )}
     }
@@ -222,10 +222,18 @@ impl<T: Ord> MulAssign for Bin<T> {
         self.exp += other.exp;
     }
 }
+
 impl<T: Ord + Clone> Mul for Bin<T> {
     type Output = Bin<T>;
     fn mul(self, a: Self) -> Self::Output {
         Bin { exp: self.exp + a.exp }
+    }
+}
+
+impl<T: Ord + Clone> Mul for &Bin<T> {
+    type Output = Bin<T>;
+    fn mul(self, a: Self) -> Self::Output {
+        self.clone() * a.clone()
     }
 }
 
@@ -239,6 +247,15 @@ impl<T: Ord + Clone> Div for Bin<T> {
     }
 }
 
+/// Division of powers of two is equivalent to subtracting the exponents
+impl<T: Ord + Clone> Div for &Bin<T> {
+    type Output = (Bin<T>, Bin<T>);
+
+    fn div(self, a: Self) -> Self::Output {
+        self.clone() / a.clone()
+    }
+}
+
 /// Specialize a bin power by substituting a variable with a literal
 impl<T: Ord + fmt::Display + Clone> Specializable<T> for Bin<T> {
     fn specialize(&mut self, id: T, val: u8) -> Result<(), SpecializeError<T>> {
@@ -248,6 +265,7 @@ impl<T: Ord + fmt::Display + Clone> Specializable<T> for Bin<T> {
         self.exp.0.keys()
     }
 }
+
 /// Remove all zero elements (0*a + c = c)
 impl<T: Ord + Clone> Normalizable for Bin<T> {
     fn normalize(&mut self) {
@@ -270,7 +288,7 @@ where
         } else {
             allocator.intersperse(self.0.into_iter()
                     .map(|(k, v)| allocator.text(v.to_string()).append(k.pretty(allocator))),
-                "+").append(allocator.text(format!("{}", self.1)))
+                "+").append(allocator.text(format!("+{}", self.1)))
         }
     }
 }
@@ -412,7 +430,7 @@ fn test_bin_div() {
 fn test_bin_lcm() {
     let a = Bin::lit(3) * Bin::lit(2) * Bin::var("x");
     let b = Bin::lit(2) * Bin::var("y") * Bin::var("x");
-    assert_eq!(a.lcm(b), Bin::lit(3) * Bin::lit(2) * Bin::var("x") * Bin::var("y"));
+    assert_eq!(a.lcm(&b), Bin::lit(3) * Bin::lit(2) * Bin::var("x") * Bin::var("y"));
 }
 
 #[test]
@@ -444,23 +462,32 @@ fn test_bin_specialize() {
 }
 
 use arbtest::arbtest;
+use crate::id::Id;
 
 #[test]
 fn test_lin_add_prop() {
     // Associativity
     arbtest(|u| {
-        let a = u.arbitrary::<Lin<char>>()?;
-        let b = u.arbitrary::<Lin<char>>()?;
-        let c = u.arbitrary::<Lin<char>>()?;
+        let a = u.arbitrary::<Lin<Id>>()?;
+        let b = u.arbitrary::<Lin<Id>>()?;
+        let c = u.arbitrary::<Lin<Id>>()?;
         assert_eq!(&a + &(&b + &c), &(&a + &b) + &c);
         Ok(())
     });
 
     // Commutativity
     arbtest(|u| {
-        let a = u.arbitrary::<Lin<char>>()?;
-        let b = u.arbitrary::<Lin<char>>()?;
+        let a = u.arbitrary::<Lin<Id>>()?;
+        let b = u.arbitrary::<Lin<Id>>()?;
         assert_eq!(&a + &b, &b + &a);
+        Ok(())
+    });
+
+    // Unit
+    arbtest(|u| {
+        let a = u.arbitrary::<Lin<Id>>()?;
+        assert_eq!(&a + &Lin::default(), a);
+        assert_eq!(&Lin::default() + &a, a);
         Ok(())
     });
 }
@@ -469,28 +496,127 @@ fn test_lin_add_prop() {
 fn test_lin_sub_prop() {
     // Cancelativity
     arbtest(|u| {
-        let a = u.arbitrary::<Lin<char>>()?;
+        let a = u.arbitrary::<Lin<Id>>()?;
         assert_eq!(&a - &a, (Lin::default(), Lin::default()));
         Ok(())
     });
 
     // Subtraction is the inverse of addition
     arbtest(|u| {
-        let a = u.arbitrary::<Lin<char>>()?;
-        let b = u.arbitrary::<Lin<char>>()?;
+        let a = u.arbitrary::<Lin<Id>>()?;
+        let b = u.arbitrary::<Lin<Id>>()?;
         assert_eq!(&a + &b - a, (b, Lin::default()));
+        Ok(())
+    });
+
+    // Unit with subtraction
+    arbtest(|u| {
+        let a = u.arbitrary::<Lin<Id>>()?;
+        assert_eq!(&a - &Lin::default(), (a.clone(), Lin::default()));
+        assert_eq!(&Lin::default() - &a, (Lin::default(), a));
         Ok(())
     });
 }
 
-
 #[test]
-fn test_lin_leq() {
+fn test_lin_leq_prop() {
     // Reflexivity
     arbtest(|u| {
-        let mut a = u.arbitrary::<Lin<char>>()?;
-        a.normalize();
-        assert!(&a.leq(&a));
+        let a = u.arbitrary::<Lin<Id>>()?;
+        assert!(a.leq(&a));
+        Ok(())
+    });
+
+    // Leq and addition
+    arbtest(|u| {
+        let a = u.arbitrary::<Lin<Id>>()?;
+        let b = u.arbitrary::<Lin<Id>>()?;
+        // a <= a + b
+        assert!(a.leq(&(&a + &b)));
+        assert!(b.leq(&(&a + &b)));
+        Ok(())
+    });
+}
+
+#[test]
+fn test_bin_mul_prop() {
+    // Commutativity
+    arbtest(|u| {
+        let a = u.arbitrary::<Bin<Id>>()?;
+        let b = u.arbitrary::<Bin<Id>>()?;
+        assert_eq!(&a * &b, &b * &a);
+        Ok(())
+    });
+
+    // Associativity
+    arbtest(|u| {
+        let a = u.arbitrary::<Bin<Id>>()?;
+        let b = u.arbitrary::<Bin<Id>>()?;
+        let c = u.arbitrary::<Bin<Id>>()?;
+        assert_eq!(&a * &(&b * &c), &(&a * &b) * &c);
+        Ok(())
+    });
+
+    // Units
+    arbtest(|u| {
+        let a = u.arbitrary::<Bin<Id>>()?;
+        assert_eq!(&a * &Bin::default(), &Bin::default() * &a);
+        Ok(())
+    });
+}
+
+#[test]
+fn test_bin_div_prop() {
+    // Cancellativity
+    arbtest(|u| {
+        let a = u.arbitrary::<Bin<Id>>()?;
+        assert_eq!(&a / &a, (Bin::default(), Bin::default()));
+        Ok(())
+    });
+
+    // Unit and Division
+    arbtest(|u| {
+        let a = u.arbitrary::<Bin<Id>>()?;
+        assert_eq!(&Bin::default() / &a, (Bin::default(), a.clone()));
+        assert_eq!(&a / &Bin::default(), (a, Bin::default()));
+        Ok(())
+    });
+
+    // Least-common multiple divides evenly
+    arbtest(|u| {
+        let a = u.arbitrary::<Bin<Id>>()?;
+        let b = u.arbitrary::<Bin<Id>>()?;
+        assert_eq!((&(a.lcm(&b)) / &a).1, Bin::default());
+        assert_eq!((&(b.lcm(&a)) / &b).1, Bin::default());
+        Ok(())
+    });
+}
+
+#[test]
+fn test_bin_leq_prop() {
+    // Reflexivity
+    arbtest(|u| {
+        let a = u.arbitrary::<Bin<Id>>()?;
+        assert!(a.leq(&a));
+        Ok(())
+    });
+
+    // Terms less than their product
+    arbtest(|u| {
+        let a = u.arbitrary::<Bin<Id>>()?;
+        let b = u.arbitrary::<Bin<Id>>()?;
+        assert!(a.leq(&(&a * &b)));
+        assert!(b.leq(&(&a * &b)));
+        Ok(())
+    });
+
+    // Div less than terms
+    arbtest(|u| {
+        let a = u.arbitrary::<Bin<Id>>()?;
+        let b = u.arbitrary::<Bin<Id>>()?;
+        let (p, r) = &a / &b;
+        assert!(p.leq(&a));
+        assert!(r.leq(&b));
         Ok(())
     });
 }
