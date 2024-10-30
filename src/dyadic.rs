@@ -288,8 +288,13 @@ impl<T: Ord> Dyadic<T> {
         Dyadic { numer: self.numer, denom: self.denom.double() }
     }
     // p / b
-    pub fn div_bin(&mut self, other: Bin<T>) {
-        self.denom *= other;
+    pub fn div_bin(self, other: Bin<T>) -> Self
+    where
+        T: Clone
+    {
+        let mut s = self.clone();
+        s.denom *= other;
+        s
     }
 }
 
@@ -342,6 +347,7 @@ impl<T: Ord + Clone + fmt::Debug> Mul for Dyadic<T> {
 impl<T: Ord + fmt::Display + Clone> Specializable<T> for Dyadic<T> {
     fn specialize(&mut self, id: T, val: u8) -> Result<(), SpecializeError<T>> {
         let mut numer = Set::new();
+        let mut did_subst = false; // check if substituted in the end
         for v in self.numer.iter() {
             let mut vv = v.clone();
             vv.specialize(id.clone(), val)?;
@@ -377,4 +383,40 @@ impl<T: Ord + Clone + fmt::Debug> Normalizable for Dyadic<T> {
         self.numer = numer;
         self.denom *= acc;
     }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////
+/* Unit Tests for Dyadic */
+////////////////////////////////////////////////////////////////////////////////////////
+#[test]
+fn test_dyadic_mul() {
+    // 2 * X * 4 / 2^Y = X / 2^(Y-3)
+    let a = Dyadic::lit(2) * Dyadic::var("X");
+    let b = Dyadic::lit(4).div_bin(Bin::var("Y"));
+    assert_eq!(
+        a * b,
+        Dyadic {
+            numer: Set::singleton(DyadicMono { mult: 1, terms: Ctx::from([("X", 1)]), bin: Bin::lit(3) }),
+            denom: Bin::var("Y")
+        });
+}
+
+#[test]
+fn test_dyadic_specialize() {
+    let l = Dyadic::var("x") * Dyadic::var("y") * Dyadic::lit(2);
+
+    let mut l1 = l.clone();
+    l1.specialize("x", 2).unwrap();
+    // 2*x*y -> x = 2 -> 4*y
+    assert_eq!(l1, Dyadic::var("y") * Dyadic::lit(4));
+
+    let mut l2 = l.clone();
+    l2.specialize("y", 3).unwrap();
+    // 2*x*y -> y = 3 -> 6*x
+    assert_eq!(l2, Dyadic::var("x") * Dyadic::lit(6));
+
+    let mut l3 = l.clone();
+    assert_eq!(l3.specialize("z", 3),
+        Err(SpecializeError::VarNotFound("z")));
 }

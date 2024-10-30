@@ -353,8 +353,11 @@ impl<V: Ord> Set<V> {
         c
     }
     /// Intersection of two sets
-    pub fn intersection(&mut self, other: Set<V>) {
-        self.0.intersection(&other.0);
+    pub fn intersection(&self, other: Set<V>) -> Self
+    where
+        V: Clone
+    {
+        Set(self.0.intersection(&other.0).cloned().collect())
     }
 
     pub fn iter(&self) -> SetIterator<V> {
