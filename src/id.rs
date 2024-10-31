@@ -1,9 +1,10 @@
 use pretty::{Pretty, DocAllocator, BoxAllocator, DocBuilder};
-use arbitrary::{Unstructured, Arbitrary};
 use std::fmt;
 
 #[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Id(char);
+
+#[cfg(test)] use arbitrary::{Unstructured, Arbitrary};
 
 impl<'a, D, A> Pretty<'a, D, A> for Id
 where
@@ -16,6 +17,7 @@ where
     }
 }
 
+#[cfg(test)]
 impl<'a> Arbitrary<'a> for Id {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Id, arbitrary::Error> {
         let c = u.int_in_range(0..=25)?;

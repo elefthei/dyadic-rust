@@ -1,5 +1,4 @@
 use crate::context::{Set, Ctx};
-use std::fmt;
 
 pub trait Specializable<T> {
     fn specialize(&mut self, id: &T, val: u8)

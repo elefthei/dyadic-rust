@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use arbitrary::{Arbitrary, Unstructured};
 use pretty::{Pretty, DocAllocator, DocBuilder, BoxAllocator};
 
 /// General BTreeMap context
@@ -78,7 +77,9 @@ where
     }
 }
 
+#[cfg(test)] use arbitrary::{Arbitrary, Unstructured};
 /// Arbitrary instance for Ctx
+#[cfg(test)]
 impl<'a, K: Arbitrary<'a> + Ord> Arbitrary<'a> for Ctx<K, u8> {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self, arbitrary::Error> {
         let n: u8 = u.int_in_range(0..=9)?;
@@ -396,6 +397,7 @@ impl<V: Ord> Set<V> {
 }
 
 /// Arbitrary instance for Set
+#[cfg(test)]
 impl<'a, K: Arbitrary<'a> + Ord> Arbitrary<'a> for Set<K> {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self, arbitrary::Error> {
         let n: u8 = u.int_in_range(0..=9)?;

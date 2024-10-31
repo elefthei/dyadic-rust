@@ -3,7 +3,6 @@ use std::ops::{Add, AddAssign, Sub, Mul, MulAssign, Div};
 use crate::context::{Set, Ctx};
 use crate::traits::{Specializable, Normalizable};
 use pretty::{DocAllocator, DocBuilder, BoxAllocator, Pretty};
-use arbitrary::{Arbitrary, Result, Unstructured};
 
 /// Represents a type-level positive, linear expression
 /// ex: 2a + 3b + 4c + 5
@@ -303,8 +302,10 @@ where
 }
 
 /// Arbitrary instance for Lin
+#[cfg(test)] use arbitrary::{Arbitrary, Unstructured};
+#[cfg(test)]
 impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for Lin<T> {
-    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let mut l = Lin(Ctx::arbitrary(u)?, u.int_in_range(0..=9)?);
         l.normalize();
         Ok(l)
@@ -338,8 +339,9 @@ where
 }
 
 /// Arbitrary instance for Bin
+#[cfg(test)]
 impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for Bin<T> {
-    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Bin { exp: Lin::arbitrary(u)? })
     }
 }
@@ -456,8 +458,8 @@ fn test_bin_specialize() {
     assert_eq!(l, l3);
 }
 
-use arbtest::arbtest;
-use crate::id::Id;
+#[cfg(test)] use arbtest::arbtest;
+#[cfg(test)] use crate::id::Id;
 
 #[test]
 fn test_lin_add_prop() {

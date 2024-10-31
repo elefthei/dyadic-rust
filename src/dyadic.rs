@@ -5,8 +5,6 @@ use crate::context::{Ctx, Set};
 use crate::traits::{Specializable, Normalizable};
 use crate::bin::Bin;
 
-use arbitrary::{Arbitrary, Unstructured};
-
 /// Represents a type-level, signed dyadic monoterm,
 /// eg: 3* a * b^2 * c^3 * 2^(d+e+f+2)
 ///     -2 * x * 2^y
@@ -63,7 +61,7 @@ impl<Id: Ord> Mono<Id> {
         res
     }
     /// Division by a bin (with remainder)
-    pub fn div_bin(&self, other: &Bin<Id>) -> (Self, Bin<Id>) where Id: Clone + fmt::Debug {
+    pub fn div_bin(&self, other: &Bin<Id>) -> (Self, Bin<Id>) where Id: Clone {
         let mut res = self.clone();
         let (q, r) = res.bin.div(other.clone());
         res.bin = q;
@@ -189,7 +187,10 @@ where
     }
 }
 
+#[cfg(test)] use arbitrary::{Unstructured, Arbitrary};
+
 /// Arbitrary instance for Mono
+#[cfg(test)]
 impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for Mono<T> {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Mono {
@@ -262,19 +263,16 @@ impl<T: Ord> Dyadic<T> {
     }
 }
 
-// TODO: Remove Debug and assert
-impl<T: Ord + Clone + fmt::Debug> Add for Dyadic<T> {
+impl<T: Ord + Clone> Add for Dyadic<T> {
     type Output = Dyadic<T>;
     fn add(self, other: Self) -> Self::Output {
         // Compute denominator as the LCM of the two denominators
         let denom = self.denom.lcm(&other.denom);
 
         // Compute the left multiplicative factor (remainder is 0 by LCM property)
-        let (lm, lr) = denom.clone().div(self.denom);
-        assert_eq!(lr, Bin::default());
+        let (lm, _) = denom.clone().div(self.denom);
         // Compute the right multiplicative factor
-        let (rm, rr) = denom.clone().div(other.denom);
-        assert_eq!(rr, Bin::default());
+        let (rm, _) = denom.clone().div(other.denom);
 
         // Multiply each term by the multiplicative factor
         let mut numer: Set<Mono<T>> = self.numer.into_iter().map(|v| v.mul_bin(lm.clone())).collect();
@@ -287,28 +285,28 @@ impl<T: Ord + Clone + fmt::Debug> Add for Dyadic<T> {
     }
 }
 
-impl<T: Ord + Clone + fmt::Debug> Add for &Dyadic<T> {
+impl<T: Ord + Clone> Add for &Dyadic<T> {
     type Output = Dyadic<T>;
     fn add(self, other: Self) -> Self::Output {
         self.clone() + other.clone()
     }
 }
 
-impl<T: Ord + Clone + fmt::Debug> Sub for Dyadic<T> {
+impl<T: Ord + Clone> Sub for Dyadic<T> {
     type Output = Dyadic<T>;
     fn sub(self, other: Self) -> Self::Output {
         self + other.neg()
     }
 }
 
-impl<T: Ord + Clone + fmt::Debug> Sub for &Dyadic<T> {
+impl<T: Ord + Clone> Sub for &Dyadic<T> {
     type Output = Dyadic<T>;
     fn sub(self, other: Self) -> Self::Output {
         self.clone() - other.clone()
     }
 }
 
-impl<T: Ord + Clone + fmt::Debug> Mul for Dyadic<T> {
+impl<T: Ord + Clone> Mul for Dyadic<T> {
     type Output = Dyadic<T>;
     fn mul(self, other: Self) -> Self::Output {
         let mut terms = Set::new();
@@ -322,7 +320,7 @@ impl<T: Ord + Clone + fmt::Debug> Mul for Dyadic<T> {
     }
 }
 
-impl<T: Ord + Clone + fmt::Debug> Mul for &Dyadic<T> {
+impl<T: Ord + Clone> Mul for &Dyadic<T> {
     type Output = Dyadic<T>;
     fn mul(self, other: Self) -> Self::Output {
         self.clone() * other.clone()
@@ -357,7 +355,9 @@ where
             .render_fmt(100, f)
     }
 }
+
 /// Arbitrary instance for Dyadic
+#[cfg(test)]
 impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for Dyadic<T> {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let numer = Set::arbitrary(u)?;
@@ -376,7 +376,7 @@ impl<T: Ord + fmt::Display + Clone> Specializable<T> for Dyadic<T> {
     }
 }
 
-impl<T: Ord + Clone + fmt::Debug> Normalizable for Dyadic<T> {
+impl<T: Ord + Clone> Normalizable for Dyadic<T> {
     fn normalize(&mut self) {
         // 1. Normalize numerator
         self.numer.modify(|x| x.normalize());
@@ -500,10 +500,11 @@ fn test_dyadic_normalize() {
 ////////////////////////////////////////////////////////////////////////////////////////
 /* Prop tests */
 ////////////////////////////////////////////////////////////////////////////////////////
-use arbtest::arbtest;
-use crate::id::Id;
+#[cfg(test)] use arbtest::arbtest;
+#[cfg(test)] use crate::id::Id;
 
 // Match two expressions, like `assert_eqn!(a, b)` modulo beta-equivalence
+#[cfg(test)]
 #[macro_export]
 macro_rules! assert_eqn {
     ($left:expr, $right:expr) => ({
