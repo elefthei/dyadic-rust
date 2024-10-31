@@ -2,6 +2,7 @@
 name = "dyadic-rust"
 version = "0.1.0"
 edition = "2021"
+description = "Binary and Dyadic rational expressions in Rust"
 license-file = "LICENSE"
 keywords = ["algebra", "dyadic", "mathematics", "number theory", "rational numbers"]
 
