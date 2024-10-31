@@ -1,4 +1,5 @@
-# dyadic**dyadic** is a Rust library for performing symbolic algebra with dyadic rational numbers. Dyadic rationals, or binary rationals, are numbers that can be expressed as fractions with a power of two as the denominator (e.g., `1/2`, `3/2`, `3/8`). These numbers have finite binary representations, making them ideal for precise approximations in computer science and mathematics.
+# dyadic-rationals
+**dyadic-rationals** is a Rust library for performing symbolic algebra with dyadic rational numbers. Dyadic rationals, or binary rationals, are numbers that can be expressed as fractions with a power of two as the denominator (e.g., `1/2`, `3/2`, `3/8`). These numbers have finite binary representations, making them ideal for precise approximations in computer science and mathematics.
 
 ### Features
 

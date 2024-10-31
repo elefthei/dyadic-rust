@@ -1,5 +1,5 @@
 [package]
-name = "dyadic"
+name = "dyadic-rationals"
 version = "0.1.0"
 edition = "2021"
 description = "Binary and Dyadic rational expressions in Rust"
