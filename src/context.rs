@@ -197,6 +197,14 @@ impl<K: Ord, V> Ctx<K, V> {
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
         self.0.iter_mut()
     }
+    pub fn modify<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&K, &mut V)
+    {
+        for (k, v) in self.iter_mut() {
+            f(k, v);
+        }
+    }
     pub fn retain(&mut self, f: impl Fn(&K, &mut V) -> bool) {
         self.0.retain(f);
     }
@@ -326,6 +334,9 @@ impl<V: Ord> Set<V> {
         }
         self
     }
+    pub fn first(&self) -> Option<&V> {
+        self.0.iter().next()
+    }
     pub fn contains(&self, k: &V) -> bool {
         self.0.contains(k)
     }
@@ -365,5 +376,33 @@ impl<V: Ord> Set<V> {
             iter: self.0.iter(),
         }
     }
+
+    // Method to iterate over a mutable Vec, modify elements, and return a new Set<T>
+    pub fn modify<F>(&mut self, mut f: F)
+    where
+        V: Clone,
+        F: FnMut(&mut V),
+    {
+        // Convert BTreeSet<V> to Vec<V>
+        let mut vec: Vec<V> = self.0.iter().cloned().collect();
+
+        // Apply modification function to each element
+        for elem in vec.iter_mut() {
+            f(elem);
+        }
+        // Collect back into Set<V>
+        self.0 = vec.into_iter().collect();
+    }
 }
 
+/// Arbitrary instance for Set
+impl<'a, K: Arbitrary<'a> + Ord> Arbitrary<'a> for Set<K> {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self, arbitrary::Error> {
+        let n: u8 = u.int_in_range(0..=9)?;
+        let mut vars = BTreeSet::new();
+        for _ in 0..n {
+            vars.insert(K::arbitrary(u)?);
+        }
+        Ok(Set(vars))
+    }
+}

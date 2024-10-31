@@ -1,7 +1,8 @@
-use pretty::{Pretty, DocAllocator, DocBuilder};
+use pretty::{Pretty, DocAllocator, BoxAllocator, DocBuilder};
 use arbitrary::{Unstructured, Arbitrary};
+use std::fmt;
 
-#[derive(Debug, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Id(char);
 
 impl<'a, D, A> Pretty<'a, D, A> for Id
@@ -21,3 +22,19 @@ impl<'a> Arbitrary<'a> for Id {
         Ok(Id((b'a' + c) as char))
     }
 }
+
+/// Display instance calls the pretty printer
+impl<'a> fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <Id as Pretty<'_, BoxAllocator, ()>>::pretty(self.clone(), &BoxAllocator)
+            .1
+            .render_fmt(4, f)
+    }
+}
+
+impl<'a> fmt::Debug for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+

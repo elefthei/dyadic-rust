@@ -205,9 +205,9 @@ impl<T: Ord> Bin<T> {
     }
 
     /// Greatest common divisor of two exponents of two
-    pub fn gcd(&self, other: Self) -> Self where T: Clone {
+    pub fn gcd(&self, other: &Self) -> Self where T: Clone {
         Bin { exp : Lin(
-            self.exp.0.intersection_with(other.exp.0, &|a, b| std::cmp::min(a, b)),
+            self.exp.0.intersection_with(other.exp.0.clone(), &|a, b| std::cmp::min(a, b)),
             std::cmp::min(self.exp.1, other.exp.1)
         )}
     }
@@ -551,6 +551,14 @@ fn test_bin_mul_prop() {
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
         assert_eq!(&a * &Bin::default(), &Bin::default() * &a);
+        Ok(())
+    });
+
+    // Double and half
+    arbtest(|u| {
+        let a = u.arbitrary::<Bin<Id>>()?;
+        assert_eq!(&a.clone().double() / &a, (Bin::lit(1), Bin::default()));
+        assert_eq!(&a.clone().double().half(), &Some(a));
         Ok(())
     });
 }
