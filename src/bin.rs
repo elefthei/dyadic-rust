@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::{Add, AddAssign, Sub, Mul, MulAssign, Div};
 use crate::context::{Set, Ctx};
-use crate::traits::{Specializable, SpecializeError, Normalizable};
+use crate::traits::{Specializable, Normalizable};
 use pretty::{DocAllocator, DocBuilder, BoxAllocator, Pretty};
 use arbitrary::{Arbitrary, Result, Unstructured};
 
@@ -146,12 +146,9 @@ impl<T: Ord + Clone> Normalizable for Lin<T> {
 
 /// Specialize a linear term by substituting a variable
 impl<T: Ord + fmt::Display + Clone> Specializable<T> for Lin<T> {
-    fn specialize(&mut self, id: T, val: u8) -> Result<(), SpecializeError<T>> {
-        if let Some(v) = self.0.remove(&id) {
+    fn specialize(&mut self, id: &T, val: u8) {
+        if let Some(v) = self.0.remove(id) {
             self.1 += v * val;
-            Ok(())
-        } else {
-            Err(SpecializeError::VarNotFound(id))
         }
     }
 
@@ -258,7 +255,7 @@ impl<T: Ord + Clone> Div for &Bin<T> {
 
 /// Specialize a bin power by substituting a variable with a literal
 impl<T: Ord + fmt::Display + Clone> Specializable<T> for Bin<T> {
-    fn specialize(&mut self, id: T, val: u8) -> Result<(), SpecializeError<T>> {
+    fn specialize(&mut self, id: &T, val: u8) {
         self.exp.specialize(id, val)
     }
     fn free_vars(&self) -> Set<&T> {
@@ -395,16 +392,16 @@ fn test_lin_specialize() {
     let l = Lin::var("x") + Lin::var("y") + Lin::lit(1);
 
     let mut l1 = l.clone();
-    l1.specialize("x", 2).unwrap();
+    l1.specialize(&"x", 2);
     assert_eq!(l1, Lin::var("y") + Lin::lit(3));
 
     let mut l2 = l.clone();
-    l2.specialize("y", 2).unwrap();
+    l2.specialize(&"y", 2);
     assert_eq!(l2, Lin::var("x") + Lin::lit(3));
 
     let mut l3 = l.clone();
-    assert_eq!(l3.specialize("z", 2),
-        Err(SpecializeError::VarNotFound("z")));
+    l3.specialize(&"z", 2);
+    assert_eq!(l, l3);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -444,21 +441,19 @@ fn test_bin_specialize() {
     let l = Bin::var("x") * Bin::var("y") * Bin::lit(1);
 
     let mut l1 = l.clone();
-    l1.specialize("x", 2).unwrap();
+    l1.specialize(&"x", 2);
     assert_eq!(l1, Bin::var("y") * Bin::lit(3));
 
     let mut l2 = l.clone();
-    l2.specialize("y", 2).unwrap();
+    l2.specialize(&"y", 2);
     assert_eq!(
         l2,
         Bin::var("x") * Bin::lit(3)
     );
 
     let mut l3 = l.clone();
-    assert_eq!(
-        l3.specialize("z", 2),
-        Err(SpecializeError::VarNotFound("z"))
-    );
+    l3.specialize(&"z", 2);
+    assert_eq!(l, l3);
 }
 
 use arbtest::arbtest;
@@ -500,7 +495,6 @@ fn test_lin_sub_prop() {
         assert_eq!(&a - &a, (Lin::default(), Lin::default()));
         Ok(())
     });
-
     // Subtraction is the inverse of addition
     arbtest(|u| {
         let a = u.arbitrary::<Lin<Id>>()?;
@@ -508,7 +502,6 @@ fn test_lin_sub_prop() {
         assert_eq!(&a + &b - a, (b, Lin::default()));
         Ok(())
     });
-
     // Unit with subtraction
     arbtest(|u| {
         let a = u.arbitrary::<Lin<Id>>()?;
@@ -526,7 +519,6 @@ fn test_lin_leq_prop() {
         assert!(a.leq(&a));
         Ok(())
     });
-
     // Leq and addition
     arbtest(|u| {
         let a = u.arbitrary::<Lin<Id>>()?;
@@ -547,7 +539,6 @@ fn test_bin_mul_prop() {
         assert_eq!(&a * &b, &b * &a);
         Ok(())
     });
-
     // Associativity
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
@@ -556,7 +547,6 @@ fn test_bin_mul_prop() {
         assert_eq!(&a * &(&b * &c), &(&a * &b) * &c);
         Ok(())
     });
-
     // Units
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
@@ -573,7 +563,6 @@ fn test_bin_div_prop() {
         assert_eq!(&a / &a, (Bin::default(), Bin::default()));
         Ok(())
     });
-
     // Unit and Division
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
@@ -581,7 +570,6 @@ fn test_bin_div_prop() {
         assert_eq!(&a / &Bin::default(), (a, Bin::default()));
         Ok(())
     });
-
     // Least-common multiple divides evenly
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
@@ -600,7 +588,6 @@ fn test_bin_leq_prop() {
         assert!(a.leq(&a));
         Ok(())
     });
-
     // Terms less than their product
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
@@ -609,7 +596,6 @@ fn test_bin_leq_prop() {
         assert!(b.leq(&(&a * &b)));
         Ok(())
     });
-
     // Div less than terms
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;

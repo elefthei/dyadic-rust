@@ -2,7 +2,7 @@ use std::fmt;
 use std::ops::{Add, Sub, Mul, MulAssign, Div};
 use pretty::{BoxAllocator, Pretty, DocAllocator, DocBuilder};
 use crate::context::{Ctx, Set};
-use crate::traits::{Specializable, SpecializeError, Normalizable};
+use crate::traits::{Specializable, Normalizable};
 use crate::bin::Bin;
 
 use arbitrary::{Arbitrary, Unstructured};
@@ -119,17 +119,15 @@ impl<T: Ord> From<i32> for DyadicMono<T> {
 
 impl<T: fmt::Display + Ord + Clone> Specializable<T> for DyadicMono<T> {
     // ex: 12*a^2*b^3*2^(c+1) -> a = 2 -> 48*b^3*2^(c+3)
-    fn specialize(&mut self, id: T, val: u8) -> Result<(), SpecializeError<T>> {
+    fn specialize(&mut self, id: &T, val: u8) {
         if let Some(v) = self.terms.remove(&id) {
             self.mult *= val.pow(v as u32) as i32;
             // We already performed [id] substitution so don't fail
-            self.bin.specialize(id, val).unwrap_or(());
+            self.bin.specialize(id, val);
             self.normalize();
-            Ok(())
-        } else {
-            // Fail if no substitution performed
-            self.bin.specialize(id, val)
         }
+        // substitute denominator
+        self.bin.specialize(id, val)
     }
 
     fn free_vars(&self) -> Set<&T> {
@@ -215,18 +213,18 @@ fn test_dyadicmono_specialize() {
 
     let mut l1 = l.clone();
     println!("Before: {}", l1);
-    l1.specialize("x", 2).unwrap();
+    l1.specialize(&"x", 2);
     // 2*x*y -> x = 2 -> 4*y
     assert_eq!(l1, DyadicMono::var("y") * DyadicMono::lit(4));
 
     let mut l2 = l.clone();
-    l2.specialize("y", 3).unwrap();
+    l2.specialize(&"y", 3);
     // 2*x*y -> y = 3 -> 6*x
     assert_eq!(l2, DyadicMono::var("x") * DyadicMono::lit(6));
 
     let mut l3 = l.clone();
-    assert_eq!(l3.specialize("z", 3),
-        Err(SpecializeError::VarNotFound("z")));
+    l3.specialize(&"z", 3);
+    assert_eq!(l3, l);
 }
 
 /// Finally a dyadic number
@@ -345,17 +343,15 @@ impl<T: Ord + Clone + fmt::Debug> Mul for Dyadic<T> {
 }
 
 impl<T: Ord + fmt::Display + Clone> Specializable<T> for Dyadic<T> {
-    fn specialize(&mut self, id: T, val: u8) -> Result<(), SpecializeError<T>> {
+    fn specialize(&mut self, id: &T, val: u8) {
         let mut numer = Set::new();
-        let mut did_subst = false; // check if substituted in the end
         for v in self.numer.iter() {
             let mut vv = v.clone();
-            vv.specialize(id.clone(), val)?;
+            vv.specialize(id, val);
             numer.insert(vv);
         }
-        self.denom.specialize(id, val)?;
+        self.denom.specialize(id, val);
         self.numer = numer;
-        Ok(())
     }
 
     fn free_vars(&self) -> Set<&T> {
@@ -407,16 +403,16 @@ fn test_dyadic_specialize() {
     let l = Dyadic::var("x") * Dyadic::var("y") * Dyadic::lit(2);
 
     let mut l1 = l.clone();
-    l1.specialize("x", 2).unwrap();
+    l1.specialize(&"x", 2);
     // 2*x*y -> x = 2 -> 4*y
     assert_eq!(l1, Dyadic::var("y") * Dyadic::lit(4));
 
     let mut l2 = l.clone();
-    l2.specialize("y", 3).unwrap();
+    l2.specialize(&"y", 3);
     // 2*x*y -> y = 3 -> 6*x
     assert_eq!(l2, Dyadic::var("x") * Dyadic::lit(6));
 
     let mut l3 = l.clone();
-    assert_eq!(l3.specialize("z", 3),
-        Err(SpecializeError::VarNotFound("z")));
+    l3.specialize(&"z", 3);
+    assert_eq!(l3, l);
 }

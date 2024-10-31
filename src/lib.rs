@@ -9,5 +9,4 @@ pub use context::Set;
 pub use dyadic::Dyadic;
 pub use bin::Bin;
 pub use traits::Specializable;
-pub use traits::SpecializeError;
 pub use traits::Normalizable;

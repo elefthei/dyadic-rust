@@ -1,17 +1,8 @@
 use crate::context::{Set, Ctx};
-use thiserror::Error;
 use std::fmt;
 
-#[derive(Error, PartialEq, Debug)]
-pub enum SpecializeError<T: fmt::Display> {
-    #[error("Free variable not found {0}")]
-    VarNotFound(T),
-    #[error("Free variables found after specializing {0}")]
-    FreeVars(Set<T>),
-}
-
-pub trait Specializable<T: fmt::Display> {
-    fn specialize(&mut self, id: T, val: u8) -> Result<(), SpecializeError<T>>
+pub trait Specializable<T> {
+    fn specialize(&mut self, id: &T, val: u8)
     where
         Self: Sized;
 
@@ -21,18 +12,12 @@ pub trait Specializable<T: fmt::Display> {
         self.free_vars().is_empty()
     }
 
-    fn specialize_all(&mut self, ctx: Ctx<T, u8>) -> Result<(), SpecializeError<T>>
+    fn specialize_all(&mut self, ctx: Ctx<T, u8>)
     where
         T: Ord + Clone,
         Self: Sized {
-        for (id, val) in ctx.into_iter() {
-            self.specialize(id, val)?;
-        }
-        let free_vars = self.free_vars();
-        if free_vars.is_empty() {
-            Ok(())
-        } else {
-            Err(SpecializeError::FreeVars(free_vars.into_iter().map(|v| v.clone()).collect()))
+        for (id, val) in ctx.iter() {
+            self.specialize(id, *val);
         }
     }
 }
