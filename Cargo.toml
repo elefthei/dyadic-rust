@@ -2,6 +2,9 @@
 name = "dyadic-rust"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+license-file = "LICENSE"
+keywords = ["algebra", "dyadic", "mathematics", "number theory", "rational numbers"]
 
 [dependencies]
 arbitrary = { version = "1.3.2", features = ["derive"] }
