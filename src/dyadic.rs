@@ -32,6 +32,9 @@ impl<Id: Ord> Mono<Id> {
     pub fn neg(self) -> Self {
         Mono { mult: -self.mult, terms: self.terms, bin: self.bin }
     }
+    pub fn termbin(&self) -> (&Ctx<Id, u8>, &Bin<Id>) {
+        (&self.terms, &self.bin)
+    }
     /// Doubling a term
     pub fn double(self) -> Self where Id: Clone {
         Mono { mult: self.mult, terms: self.terms, bin: self.bin.double() }
@@ -278,9 +281,21 @@ impl<T: Ord + Clone> Add for Dyadic<T> {
         let mut numer: Set<Mono<T>> = self.numer.into_iter().map(|v| v.mul_bin(lm.clone())).collect();
         let r = other.numer.into_iter().map(|v| v.mul_bin(rm.clone()));
 
-        // If a + b + b = a + 2b
-        numer.append_with(r, &|v| v.double());
-        // Return l / denom
+        // If a + b + b = a + 2b and a - b + a = a
+        for i in r {
+            let term = i.termbin();
+            let same = numer.extract_if(|v| term == v.termbin());
+            let mut mult = 0;
+            for v in same.iter() {
+                mult += v.mult;
+            }
+            numer.insert_with(
+                Mono { mult, terms: term.0.clone(), bin: term.1.clone() },
+                |v| v.double()
+            );
+        }
+
+        // Return numer / denom
         Dyadic { numer, denom }
     }
 }
@@ -380,6 +395,7 @@ impl<T: Ord + Clone> Normalizable for Dyadic<T> {
     fn normalize(&mut self) {
         // 1. Normalize numerator
         self.numer.modify(|x| x.normalize());
+        self.numer.extract_if(|x| x.mult == 0);
 
         // 2. Take denominator and normalize it
         let mut acc = self.denom.clone();
@@ -580,6 +596,31 @@ fn test_dyadic_add_prop() {
         let a = u.arbitrary::<Dyadic<Id>>()?;
         assert_eqn!(&a + &Dyadic::unit_add(), a);
         assert_eqn!(&Dyadic::unit_add() + &a, a);
+        Ok(())
+    });
+}
+
+#[test]
+fn test_dyadic_sub_prop() {
+    // Cancellativity
+    arbtest(|u| {
+        let a = u.arbitrary::<Dyadic<Id>>()?;
+        assert_eqn!(&a - &a, Dyadic::<Id>::unit_add());
+        Ok(())
+    });
+
+    // Unit of addition
+    arbtest(|u| {
+        let a = u.arbitrary::<Dyadic<Id>>()?;
+        assert_eqn!(&a - &Dyadic::unit_add(), a);
+        assert_eqn!(&Dyadic::unit_add() - &a, a.clone().neg());
+        Ok(())
+    });
+
+    // Negate twice (idempotence)
+    arbtest(|u| {
+        let a = u.arbitrary::<Dyadic<Id>>()?;
+        assert_eqn!(a, a.clone().neg().neg());
         Ok(())
     });
 }

@@ -209,6 +209,21 @@ impl<K: Ord, V> Ctx<K, V> {
     pub fn retain(&mut self, f: impl Fn(&K, &mut V) -> bool) {
         self.0.retain(f);
     }
+
+    pub fn extract_if(&mut self, f: impl Fn(&K, &V) -> bool) -> Ctx<K, V>
+    where
+        K: Clone,
+        V: Clone,
+    {
+        let mut c = Ctx::new();
+        for (k, v) in self.0.clone().into_iter() {
+            if f(&k, &v) {
+                c.insert(k, v);
+            }
+        }
+        self.retain(|k, _| !c.contains(k));
+        c
+    }
 }
 
 /// From instance
@@ -393,6 +408,14 @@ impl<V: Ord> Set<V> {
         }
         // Collect back into Set<V>
         self.0 = vec.into_iter().collect();
+    }
+
+    // Extract elements from the map that satisfy a predicate
+    pub fn extract_if(&mut self, f: impl Fn(&V) -> bool) -> Set<V>
+    where
+        V: Clone
+    {
+        self.0.extract_if(f).collect()
     }
 }
 

@@ -1,3 +1,4 @@
+#![feature(btree_extract_if)]
 pub mod bin;
 pub mod dyadic;
 pub mod context;
