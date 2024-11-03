@@ -41,3 +41,21 @@ pub trait Normalizable {
         self_clone == other_clone
     }
 }
+
+// Match two expressions, like `assert_eqn!(a, b)` modulo beta-equivalence
+#[cfg(test)]
+#[macro_export]
+macro_rules! assert_eqn {
+    ($left:expr, $right:expr) => ({
+        if !Normalizable::eqn(&$left, &$right) {
+            let mut l = $left.clone();
+            let mut r = $right.clone();
+            l.normalize();
+            r.normalize();
+            panic!(
+                "Assertion failed: `assert_eqn!({}, {})`\n  left (pre): `{}`,\n  right (pre): `{}`,\n  left (post): `{}`,\n  right (post): `{}`",
+                stringify!($left), stringify!($right), $left, $right, l, r,
+            );
+        }
+    });
+}

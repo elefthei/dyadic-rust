@@ -1,9 +1,13 @@
 use std::fmt;
-use std::ops::{Add, Sub, Mul, MulAssign, Div};
+use std::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, DivAssign};
 use pretty::{BoxAllocator, Pretty, DocAllocator, DocBuilder};
 use crate::context::{Ctx, Set};
 use crate::traits::{Specializable, Normalizable};
-use crate::bin::Bin;
+use crate::bin::{Bin, Lin};
+use std::collections::BTreeMap;
+
+#[cfg(test)]
+use crate::assert_eqn;
 
 /// Represents a type-level, signed dyadic monoterm,
 /// eg: 3* a * b^2 * c^3 * 2^(d+e+f+2)
@@ -24,16 +28,21 @@ impl<Id: Ord> Mono<Id> {
         Mono { mult:1, terms: Ctx::from([(v, 1)]), bin: Bin::default() }
     }
     pub fn term(v: Id, exp: u8) -> Self {
-        Mono { mult: 1, terms: Ctx::from([(v, exp)]), bin: Bin::default() }
+        if exp == 0 {
+            Mono::lit(1)
+        } else {
+            Mono { mult: 1, terms: Ctx::from([(v, exp)]), bin: Bin::default() }
+        }
     }
     pub fn bin(b: Bin<Id>) -> Self where Id: Ord {
         Mono { mult: 1, terms: Ctx::new(), bin: b }
     }
+    pub fn log2(i: i32) -> Self {
+        let (p, r) = Bin::log2(i);
+        Mono { mult: r, terms: Ctx::new(), bin: p }
+    }
     pub fn neg(self) -> Self {
         Mono { mult: -self.mult, terms: self.terms, bin: self.bin }
-    }
-    pub fn termbin(&self) -> (&Ctx<Id, u8>, &Bin<Id>) {
-        (&self.terms, &self.bin)
     }
     /// Doubling a term
     pub fn double(self) -> Self where Id: Clone {
@@ -41,28 +50,15 @@ impl<Id: Ord> Mono<Id> {
     }
     /// Halving a term could fail (ex: 3*a^2*2^c)
     pub fn half(self) -> Option<Self> {
-        if self.mult % 2 == 0 && self.mult > 0 { // broken invariant, normalize
-            let mut d = Mono { mult: self.mult / 2, terms: self.terms, bin: self.bin };
-            d.normalize();
-            Some(d)
+        if self.mult % 2 == 0 && self.mult > 0 { // broken invariant
+            Some(Mono { mult: self.mult / 2, terms: self.terms, bin: self.bin })
         } else if let Some(b) = self.bin.half() {
             Some(Mono { mult: self.mult, terms: self.terms, bin: b })
         } else {
             None
         }
     }
-    /// Multiplication by a signed literal
-    pub fn mul_lit(&mut self, other: i32) {
-        let (p, r) = Bin::log2(other);
-        self.mult *= r;
-        self.bin *= p;
-    }
-    /// Multiplication by a bin [normalizes]
-    pub fn mul_bin(self, other: Bin<Id>) -> Self where Id: Clone {
-        let mut res = self.clone();
-        res.bin *= other;
-        res
-    }
+
     /// Division by a bin (with remainder)
     pub fn div_bin(&self, other: &Bin<Id>) -> (Self, Bin<Id>) where Id: Clone {
         let mut res = self.clone();
@@ -78,10 +74,10 @@ impl<T: Ord> Default for Mono<T> {
     }
 }
 
-/// Multiplication for monoterms [normalizes]
-impl<T: Ord> MulAssign for Mono<T> {
+/// Multiplication of monoterms [normalizes]
+impl<T: Ord> MulAssign<Mono<T>> for Mono<T> {
     fn mul_assign(&mut self, other: Self) {
-        for (k, v) in other.terms.into_iter() {
+        for (k, v) in other.terms.into_iter().filter(|(_, v)| *v > 0) {
             self.terms.insert_with(k, v, &|x, y| x + y);
         }
         // No normalization needed
@@ -91,9 +87,43 @@ impl<T: Ord> MulAssign for Mono<T> {
     }
 }
 
-impl<T: Ord + Clone> Mul for Mono<T> {
+/// Multiplication of monoterms to bin [normalizes]
+impl<T: Ord> MulAssign<Bin<T>> for Mono<T> {
+    fn mul_assign(&mut self, other: Bin<T>) {
+        self.bin *= other;
+    }
+}
+
+/// Multiplication of monoterms to integers [normalizes]
+impl <T: Ord> MulAssign<i32> for Mono<T> {
+    fn mul_assign(&mut self, other: i32) {
+        let (p, r) = Bin::log2(self.mult * other);
+        self.mult = r;
+        self.bin *= p;
+    }
+}
+
+impl<T: Ord + Clone> Mul<Mono<T>> for Mono<T> {
     type Output = Self;
     fn mul(self, other: Self) -> Self::Output {
+        let mut res = self.clone();
+        res *= other;
+        res
+    }
+}
+
+impl<T: Ord + Clone> Mul<Bin<T>> for Mono<T> {
+    type Output = Self;
+    fn mul(self, other: Bin<T>) -> Self::Output {
+        let mut res = self.clone();
+        res *= other;
+        res
+    }
+}
+
+impl<T: Ord + Clone> Mul<i32> for Mono<T> {
+    type Output = Self;
+    fn mul(self, other: i32) -> Self::Output {
         let mut res = self.clone();
         res *= other;
         res
@@ -106,6 +136,14 @@ impl<T: Ord + Clone> Mul for &Mono<T> {
         self.clone() * other.clone()
     }
 }
+
+impl<T: Ord + Clone> Mul<&Bin<T>> for &Mono<T> {
+    type Output = Mono<T>;
+    fn mul(self, other: &Bin<T>) -> Self::Output {
+        self.clone() * other.clone()
+    }
+}
+
 
 impl<T: Ord> From<Bin<T>> for Mono<T> {
     fn from(b: Bin<T>) -> Self {
@@ -148,6 +186,7 @@ impl<T: Ord> Normalizable for Mono<T> {
     fn normalize(&mut self) {
         let (p, r) = Bin::log2(self.mult);
         self.bin *= p;
+        self.terms.retain(|_, v| *v > 0);
         self.mult = r;
     }
 }
@@ -163,18 +202,22 @@ where
     A: 'a + Clone,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        allocator.text(format!("{}*", self.mult))
-            .append(allocator.intersperse(self.terms.into_iter()
-                    .filter(|(_, v)| *v != 0)
-                    .map(|(k, v)|
-                        if v == 1 {
-                            k.pretty(allocator)
-                        } else {
-                            k.pretty(allocator).append(allocator.text(format!("^{}", v)))
-                        })
-                    , "*"))
-            .append(allocator.text("*"))
-            .append(self.bin.pretty(allocator))
+        if self.terms.is_empty() {
+            allocator.text(format!("{}", self.mult)).append(allocator.text("*")).append(self.bin.pretty(allocator))
+        } else {
+            allocator.text(format!("{}*", self.mult))
+                .append(allocator.intersperse(self.terms.into_iter()
+                        .filter(|(_, v)| *v != 0)
+                        .map(|(k, v)|
+                            if v == 1 {
+                                k.pretty(allocator)
+                            } else {
+                                k.pretty(allocator).append(allocator.text(format!("^{}", v)))
+                            })
+                        , "*"))
+                .append(allocator.text("*"))
+                .append(self.bin.pretty(allocator))
+        }
     }
 }
 
@@ -196,11 +239,13 @@ where
 #[cfg(test)]
 impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for Mono<T> {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Mono {
+        let mut mono = Mono {
             mult : u.int_in_range(0..=9)?,
             terms : Ctx::arbitrary(u)?,
             bin : Bin::arbitrary(u)?
-        })
+        };
+        mono.normalize();
+        Ok(mono)
     }
 }
 
@@ -223,6 +268,14 @@ impl<T: Ord> Dyadic<T> {
             denom: Bin::default()
         }
     }
+
+    pub fn bin(b: Bin<T>) -> Self {
+        Dyadic {
+            numer: Set::singleton(Mono::bin(b)),
+            denom: Bin::default()
+        }
+    }
+
     // Unit of addition
     pub fn unit_add() -> Self {
         Dyadic { numer: Set::new(), denom: Bin::default() }
@@ -266,37 +319,84 @@ impl<T: Ord> Dyadic<T> {
     }
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+/// Addition of dyadic numbers
+//////////////////////////////////////////////////////////////////////////////////////////////
+impl<T: Ord + Clone> AddAssign<Mono<T>> for Dyadic<T> {
+    fn add_assign(&mut self, other: Mono<T>) {
+        // a / 2^n + b = (a + 2^n * b) / 2^n
+        let mono = &other * &self.denom;
+        // if not normalized, manually combine terms
+        let join = self.numer.extract_if(&|v: &Mono<T>| v.terms == mono.terms && v.bin == mono.bin);
+        // Sum multipliers
+        let mult = join.into_iter().fold(mono.mult, |acc, x| acc + x.mult);
+        if mult != 0 {
+            self.numer.insert(Mono { mult, terms: other.terms, bin: other.bin });
+        }
+    }
+}
+
+impl<T: Ord + Clone> AddAssign<Bin<T>> for Dyadic<T> {
+    fn add_assign(&mut self, other: Bin<T>) {
+        *self += Mono::bin(other);
+    }
+}
+
+impl<T: Ord + Clone> AddAssign<i32> for Dyadic<T> {
+    fn add_assign(&mut self, other: i32) {
+        *self += Mono::lit(other);
+    }
+}
+
+impl<T: Ord + Clone> AddAssign for Dyadic<T> {
+    fn add_assign(&mut self, other: Self) {
+        // Compute denominator as the LCM of the two denominators
+        let lcm = self.denom.lcm(&other.denom);
+
+        // Compute the left multiplicative factor (remainder is 0 by LCM property)
+        let (lm, _) = &lcm / &self.denom;
+        // Compute the right multiplicative factor
+        let (rm, _) = &lcm / &other.denom;
+
+        // Make a reverse map of all mono terms to their multipliers
+        let mut hm: Ctx<(&Ctx<T, u8>, Bin<T>), i32> = Ctx::new();
+
+        // Multiply each term by the multiplicative factor and denominator is the lcd
+        for l in self.numer.iter() {
+            hm.insert_with((&l.terms, &l.bin * &lm), l.mult, &|a, b| a + b);
+        }
+        for r in other.numer.iter() {
+            hm.insert_with((&r.terms, &r.bin * &rm), r.mult, &|a, b| a + b);
+        }
+        self.numer = hm.into_iter().map(|((t, b), m)| Mono { terms: t.clone(), bin: b, mult: m }).collect();
+        self.denom = lcm;
+    }
+}
+
 impl<T: Ord + Clone> Add for Dyadic<T> {
     type Output = Dyadic<T>;
     fn add(self, other: Self) -> Self::Output {
-        // Compute denominator as the LCM of the two denominators
-        let denom = self.denom.lcm(&other.denom);
+        let mut res = self.clone();
+        res += other;
+        res
+    }
+}
 
-        // Compute the left multiplicative factor (remainder is 0 by LCM property)
-        let (lm, _) = denom.clone().div(self.denom);
-        // Compute the right multiplicative factor
-        let (rm, _) = denom.clone().div(other.denom);
+impl<T: Ord + Clone> Add<Mono<T>> for Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn add(self, other: Mono<T>) -> Self::Output {
+        let mut res = self.clone();
+        res += other;
+        res
+    }
+}
 
-        // Multiply each term by the multiplicative factor
-        let mut numer: Set<Mono<T>> = self.numer.into_iter().map(|v| v.mul_bin(lm.clone())).collect();
-        let r = other.numer.into_iter().map(|v| v.mul_bin(rm.clone()));
-
-        // If a + b + b = a + 2b and a - b + a = a
-        for i in r {
-            let term = i.termbin();
-            let same = numer.extract_if(|v| term == v.termbin());
-            let mut mult = 0;
-            for v in same.iter() {
-                mult += v.mult;
-            }
-            numer.insert_with(
-                Mono { mult, terms: term.0.clone(), bin: term.1.clone() },
-                |v| v.double()
-            );
-        }
-
-        // Return numer / denom
-        Dyadic { numer, denom }
+impl<T: Ord + Clone> Add<Bin<T>> for Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn add(self, other: Bin<T>) -> Self::Output {
+        let mut res = self.clone();
+        res += other;
+        res
     }
 }
 
@@ -307,10 +407,71 @@ impl<T: Ord + Clone> Add for &Dyadic<T> {
     }
 }
 
+impl<T: Ord + Clone> Add<&Mono<T>> for &Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn add(self, other: &Mono<T>) -> Self::Output {
+        self.clone() + other.clone()
+    }
+}
+
+impl<T: Ord + Clone> Add<&Bin<T>> for &Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn add(self, other: &Bin<T>) -> Self::Output {
+        self.clone() + other.clone()
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+/// Subtraction of dyadic numbers
+//////////////////////////////////////////////////////////////////////////////////////////////
+impl<T: Ord + Clone> SubAssign<Mono<T>> for Dyadic<T> {
+    fn sub_assign(&mut self, other: Mono<T>) {
+        *self += other.neg()
+    }
+}
+
+impl<T: Ord + Clone> SubAssign<Bin<T>> for Dyadic<T> {
+    fn sub_assign(&mut self, other: Bin<T>) {
+        *self += Mono::bin(other).neg();
+    }
+}
+
+impl<T: Ord + Clone> SubAssign<i32> for Dyadic<T> {
+    fn sub_assign(&mut self, other: i32) {
+        *self += Mono::lit(-other);
+    }
+}
+
+impl<T: Ord + Clone> SubAssign for Dyadic<T> {
+    fn sub_assign(&mut self, other: Self) {
+        *self += other.neg();
+    }
+}
+
 impl<T: Ord + Clone> Sub for Dyadic<T> {
     type Output = Dyadic<T>;
     fn sub(self, other: Self) -> Self::Output {
-        self + other.neg()
+        let mut res = self.clone();
+        res -= other;
+        res
+    }
+}
+
+impl<T: Ord + Clone> Sub<Mono<T>> for Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn sub(self, other: Mono<T>) -> Self::Output {
+        let mut res = self.clone();
+        res -= other;
+        res
+    }
+}
+
+impl<T: Ord + Clone> Sub<Bin<T>> for Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn sub(self, other: Bin<T>) -> Self::Output {
+        let mut res = self.clone();
+        res -= other;
+        res
     }
 }
 
@@ -321,17 +482,86 @@ impl<T: Ord + Clone> Sub for &Dyadic<T> {
     }
 }
 
+impl<T: Ord + Clone> Sub<&Mono<T>> for &Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn sub(self, other: &Mono<T>) -> Self::Output {
+        self.clone() - other.clone()
+    }
+}
+
+impl<T: Ord + Clone> Sub<&Bin<T>> for &Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn sub(self, other: &Bin<T>) -> Self::Output {
+        self.clone() - other.clone()
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+/// Multiplication of dyadic numbers
+//////////////////////////////////////////////////////////////////////////////////////////////
+impl<T: Ord + Clone> MulAssign<Mono<T>> for Dyadic<T> {
+    fn mul_assign(&mut self, other: Mono<T>) {
+        self.numer.modify(|v| *v *= other.clone());
+        self.normalize();
+    }
+}
+
+impl<T: Ord + Clone> MulAssign<Bin<T>> for Dyadic<T> {
+    fn mul_assign(&mut self, other: Bin<T>) {
+        // Calculate GCD of binary terms
+        let gcd = self.denom.gcd(&other);
+        // Multiply numerator by [other / GCD]
+        let (mult, _) = other / gcd.clone();
+        self.numer.modify(|x| *x *= mult.clone());
+        // Denominator is [denom / GCD]
+        (self.denom, _) = self.denom.clone() / gcd;
+    }
+}
+
+impl<T: Ord + Clone> MulAssign<i32> for Dyadic<T> {
+    fn mul_assign(&mut self, other: i32) {
+        let mono= Mono::<T>::log2(other);
+        *self *= mono;
+    }
+}
+
+impl<T: Ord + Clone> MulAssign for Dyadic<T> {
+    fn mul_assign(&mut self, other: Self) {
+        let mut terms = Set::new();
+        for l in self.numer.iter() {
+            for r in other.numer.iter() {
+                terms.insert_with(l * r, |v| v.double());
+            }
+        }
+        self.numer = terms;
+        self.denom *= other.denom;
+    }
+}
+
 impl<T: Ord + Clone> Mul for Dyadic<T> {
     type Output = Dyadic<T>;
     fn mul(self, other: Self) -> Self::Output {
-        let mut terms = Set::new();
-        for l in self.numer.into_iter() {
-            for r in other.numer.clone().into_iter() {
-                terms.insert_with(l.clone().mul(r), |v| v.double());
-            }
-        }
-        // a/b * c/d = ac / bd
-        Dyadic { numer: terms, denom: self.denom * other.denom }
+        let mut res = self.clone();
+        res *= other;
+        res
+    }
+}
+
+impl<T: Ord + Clone> Mul<Mono<T>> for Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn mul(self, other: Mono<T>) -> Self::Output {
+        let mut res = self.clone();
+        res *= other;
+        res
+    }
+}
+
+impl<T: Ord + Clone> Mul<Bin<T>> for Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn mul(self, other: Bin<T>) -> Self::Output {
+        let mut res = self.clone();
+        res *= other;
+        res
     }
 }
 
@@ -342,6 +572,48 @@ impl<T: Ord + Clone> Mul for &Dyadic<T> {
     }
 }
 
+impl<T: Ord + Clone> Mul<&Mono<T>> for &Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn mul(self, other: &Mono<T>) -> Self::Output {
+        self.clone() * other.clone()
+    }
+}
+
+impl<T: Ord + Clone> Mul<&Bin<T>> for &Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn mul(self, other: &Bin<T>) -> Self::Output {
+        self.clone() * other.clone()
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+/// Division of dyadic numbers by binary powers
+//////////////////////////////////////////////////////////////////////////////////////////////
+impl<T: Ord> DivAssign<Bin<T>> for Dyadic<T> {
+    fn div_assign(&mut self, other: Bin<T>) {
+        self.denom *= other;
+    }
+}
+
+impl<T: Ord + Clone> Div<Bin<T>> for Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn div(self, other: Bin<T>) -> Self::Output {
+        let mut res = self.clone();
+        res /= other;
+        res
+    }
+}
+
+impl<T: Ord + Clone> Div<&Bin<T>> for &Dyadic<T> {
+    type Output = Dyadic<T>;
+    fn div(self, other: &Bin<T>) -> Self::Output {
+        self.clone() / other.clone()
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+/// Pretty printing, display and Arbitrary for Dyadic
+//////////////////////////////////////////////////////////////////////////////////////////////
 impl<'a, D, A, T> Pretty<'a, D, A> for Dyadic<T>
 where
     D: DocAllocator<'a, A>,
@@ -377,7 +649,9 @@ impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for Dyadic<T> {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let numer = Set::arbitrary(u)?;
         let denom = Bin::arbitrary(u)?;
-        Ok(Dyadic { numer, denom })
+        let mut d = Dyadic { numer, denom };
+        d.normalize();
+        Ok(d)
     }
 }
 impl<T: Ord + fmt::Display + Clone> Specializable<T> for Dyadic<T> {
@@ -393,9 +667,9 @@ impl<T: Ord + fmt::Display + Clone> Specializable<T> for Dyadic<T> {
 
 impl<T: Ord + Clone> Normalizable for Dyadic<T> {
     fn normalize(&mut self) {
-        // 1. Normalize numerator
+        // 1. Normalize numerator and remove zero terms
         self.numer.modify(|x| x.normalize());
-        self.numer.extract_if(|x| x.mult == 0);
+        self.numer.retain(|x| x.mult > 0);
 
         // 2. Take denominator and normalize it
         let mut acc = self.denom.clone();
@@ -409,6 +683,15 @@ impl<T: Ord + Clone> Normalizable for Dyadic<T> {
         // Divide both numerator and denominator by the GCD
         self.numer.modify(|x| *x = x.div_bin(&acc).0);
         self.denom = self.denom.clone().div(acc).0;
+
+        // Make a reverse map of all mono terms to their multipliers
+        let mut hm: Ctx<(&Ctx<T, u8>, Bin<T>), i32> = Ctx::new();
+
+        // Cancel out terms
+        for l in self.numer.iter() {
+            hm.insert_with((&l.terms, l.bin.clone()), l.mult, &|a, b| a + b);
+        }
+        self.numer = hm.into_iter().map(|((t, b), m)| Mono { terms: t.clone(), bin: b, mult: m }).collect();
     }
 }
 
@@ -465,8 +748,49 @@ fn test_mono_specialize() {
 ////////////////////////////////////////////////////////////////////////////////////////
 /* Unit Tests for Dyadic */
 ////////////////////////////////////////////////////////////////////////////////////////
+
 #[test]
-fn test_dyadic_mul() {
+fn test_dyadic_add_comm_unit() {
+    let a = Dyadic::lit(2)*Dyadic::var("X")*Dyadic::bin(Bin::lit(2)* Bin::var("y"));
+    let b = Dyadic::lit(3)*Dyadic::var("Y")*Dyadic::bin(Bin::lit(0)* Bin::var("x"));
+    assert_eqn!(&a + &b, &b + &a);
+}
+
+#[test]
+fn test_dyadic_add_lcm_unit() {
+    let a = Dyadic::var("a").div_bin(&Bin::var("n"));
+    let b = Dyadic::var("b").div_bin(&Bin::var("m"));
+    assert_eqn!(&a + &b,
+        Dyadic { numer: Set::from([
+            Mono { mult: 1, terms: Ctx::from([("a", 1)]), bin: Bin::var("m") },
+            Mono { mult: 1, terms: Ctx::from([("b", 1)]), bin: Bin::var("n") }
+        ]), denom: Bin::var("n") * Bin::var("m")
+    });
+}
+
+#[test]
+fn test_dyadic_sub_lcm_unit() {
+    let a = Dyadic::var("a").div_bin(&Bin::var("n"));
+    let b = Dyadic::var("b").div_bin(&Bin::var("m"));
+    assert_eqn!(&a - &b,
+        Dyadic { numer: Set::from([
+            Mono { mult: 1, terms: Ctx::from([("a", 1)]), bin: Bin::var("m") },
+            Mono { mult: -1, terms: Ctx::from([("b", 1)]), bin: Bin::var("n") }
+        ]), denom: Bin::var("n") * Bin::var("m")
+    });
+}
+
+#[test]
+fn test_dyadic_sub_cancel_unit() {
+    let a = Dyadic {
+        numer: Set::from([Mono::<Id>::term(Id::from('a'), 7)]),
+        denom: Bin::default(),
+    };
+    assert_eqn!(&a - &a, Dyadic::<Id>::unit_add());
+}
+
+#[test]
+fn test_dyadic_mul_unit() {
     // 2 * X * 4 / 2^Y = X / 2^(Y-3)
     let a = Dyadic::lit(2) * Dyadic::var("X");
     let b = Dyadic::lit(4).div_bin(&Bin::var("Y"));
@@ -479,7 +803,7 @@ fn test_dyadic_mul() {
 }
 
 #[test]
-fn test_dyadic_specialize() {
+fn test_dyadic_specialize_unit() {
     let l = Dyadic::var("x") * Dyadic::var("y") * Dyadic::lit(2);
 
     let mut l1 = l.clone();
@@ -498,7 +822,7 @@ fn test_dyadic_specialize() {
 }
 
 #[test]
-fn test_dyadic_normalize() {
+fn test_dyadic_normalize_unit() {
     let l =
         Dyadic { numer:
             Set::from([
@@ -518,24 +842,6 @@ fn test_dyadic_normalize() {
 ////////////////////////////////////////////////////////////////////////////////////////
 #[cfg(test)] use arbtest::arbtest;
 #[cfg(test)] use crate::id::Id;
-
-// Match two expressions, like `assert_eqn!(a, b)` modulo beta-equivalence
-#[cfg(test)]
-#[macro_export]
-macro_rules! assert_eqn {
-    ($left:expr, $right:expr) => ({
-        if !Normalizable::eqn(&$left, &$right) {
-            let mut l = $left.clone();
-            let mut r = $right.clone();
-            l.normalize();
-            r.normalize();
-            panic!(
-                "Assertion failed: `assert_eqn!({}, {})`\n  left (pre): `{}`,\n  right (pre): `{}`,\n  left (post): `{}`,\n  right (post): `{}`",
-                stringify!($left), stringify!($right), $left, $right, l, r
-            );
-        }
-    });
-}
 
 #[test]
 fn test_mono_mul_prop() {

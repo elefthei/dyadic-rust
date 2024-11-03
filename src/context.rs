@@ -226,6 +226,12 @@ impl<K: Ord, V> Ctx<K, V> {
     }
 }
 
+impl<K: Ord, V> Default for Ctx<K, V> {
+    fn default() -> Self {
+        Ctx(BTreeMap::new())
+    }
+}
+
 /// From instance
 impl<X, Y, K: From<X> + Ord, V: From<Y>, const N: usize> From<[(X, Y); N]> for Ctx<K, V> {
     fn from(v: [(X, Y); N]) -> Self {
@@ -289,6 +295,12 @@ where
     }
 }
 
+impl<V> Default for Set<V> {
+    fn default() -> Self {
+        Set(BTreeSet::new())
+    }
+}
+
 impl<'a, V> fmt::Display for Set<V>
 where
     V: Pretty<'a, BoxAllocator, ()> + Clone
@@ -341,6 +353,11 @@ impl<V: Ord> Set<V> {
         }
         self
     }
+
+    pub fn pop_first(&mut self) -> Option<V> {
+        self.0.pop_first()
+    }
+
     pub fn append<It>(&mut self, it: It) -> &mut Self
     where
         It: Iterator<Item = V>,
@@ -416,6 +433,10 @@ impl<V: Ord> Set<V> {
         V: Clone
     {
         self.0.extract_if(f).collect()
+    }
+
+    pub fn retain(&mut self, f: impl Fn(&V) -> bool) {
+        self.0.retain(f);
     }
 }
 

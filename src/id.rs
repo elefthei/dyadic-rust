@@ -34,6 +34,12 @@ impl<'a> fmt::Display for Id {
     }
 }
 
+impl From<char> for Id {
+    fn from(s: char) -> Self {
+        Id(s)
+    }
+}
+
 impl<'a> fmt::Debug for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)

@@ -12,7 +12,7 @@ pub struct Lin<Id>(Ctx<Id, u8>, u8);
 
 /// Represents a type-level power of two (2^Lin)
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Bin<Id> { exp: Lin<Id> }
+pub struct Bin<Id> { pub exp: Lin<Id> }
 
 /// Identity element of addition is 0
 impl<T : Ord> Default for Lin<T> {
@@ -29,6 +29,9 @@ impl<T: Ord> Default for Bin<T> {
 }
 
 impl<T: Ord> Lin<T> {
+    pub fn new (terms: Ctx<T, u8>, v: u8) -> Self {
+        Lin(terms, v)
+    }
     /// Create a linear constant
     pub fn lit(a: u8) -> Self {
         Lin(Ctx::new(), a)
@@ -282,9 +285,22 @@ where
         if self.0.is_empty() {
             allocator.text(format!("{}", self.1))
         } else {
-            allocator.intersperse(self.0.into_iter()
-                    .map(|(k, v)| allocator.text(v.to_string()).append(k.pretty(allocator))),
-                "+").append(allocator.text(format!("+{}", self.1)))
+            allocator.intersperse(
+                self.0.into_iter()
+                    .map(|(k, v)|
+                        if v == 0 {
+                            allocator.nil()
+                        } else if v == 1 {
+                            k.pretty(allocator)
+                        } else {
+                            allocator.text(v.to_string()).append(k.pretty(allocator))
+                        }), "+")
+                .append(
+            if self.1 == 0 {
+                    allocator.nil()
+                  } else {
+                    allocator.text(format!("+{}", self.1))
+                  })
         }
     }
 }
@@ -460,6 +476,7 @@ fn test_bin_specialize() {
 
 #[cfg(test)] use arbtest::arbtest;
 #[cfg(test)] use crate::id::Id;
+#[cfg(test)] use crate::assert_eqn;
 
 #[test]
 fn test_lin_add_prop() {
@@ -538,7 +555,7 @@ fn test_bin_mul_prop() {
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
         let b = u.arbitrary::<Bin<Id>>()?;
-        assert_eq!(&a * &b, &b * &a);
+        assert_eqn!(&a * &b, &b * &a);
         Ok(())
     });
     // Associativity
@@ -546,13 +563,13 @@ fn test_bin_mul_prop() {
         let a = u.arbitrary::<Bin<Id>>()?;
         let b = u.arbitrary::<Bin<Id>>()?;
         let c = u.arbitrary::<Bin<Id>>()?;
-        assert_eq!(&a * &(&b * &c), &(&a * &b) * &c);
+        assert_eqn!(&a * &(&b * &c), &(&a * &b) * &c);
         Ok(())
     });
     // Units
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
-        assert_eq!(&a * &Bin::default(), &Bin::default() * &a);
+        assert_eqn!(&a * &Bin::default(), &Bin::default() * &a);
         Ok(())
     });
 
@@ -584,8 +601,8 @@ fn test_bin_div_prop() {
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
         let b = u.arbitrary::<Bin<Id>>()?;
-        assert_eq!((&(a.lcm(&b)) / &a).1, Bin::default());
-        assert_eq!((&(b.lcm(&a)) / &b).1, Bin::default());
+        assert_eqn!((&(a.lcm(&b)) / &a).1, Bin::<Id>::default());
+        assert_eqn!((&(b.lcm(&a)) / &b).1, Bin::<Id>::default());
         Ok(())
     });
 }
