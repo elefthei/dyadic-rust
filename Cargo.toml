@@ -1,8 +1,8 @@
 [package]
 name = "dyadic-rationals"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-description = "Binary and Dyadic rational expressions in Rust"
+description = "Binary and Dyadic rational expressions (with binders) in Rust"
 license-file = "LICENSE"
 keywords = ["algebra", "dyadic", "mathematics", "symbolic" ]
 
