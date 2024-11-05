@@ -147,7 +147,7 @@ impl<T: Ord + Clone> Normalizable for Lin<T> {
 }
 
 /// Specialize a linear term by substituting a variable
-impl<T: Ord + fmt::Display + Clone> Specializable<T> for Lin<T> {
+impl<T: Ord + fmt::Display + Clone> Specializable<T, u8> for Lin<T> {
     fn specialize(&mut self, id: &T, val: u8) {
         if let Some(v) = self.0.remove(id) {
             self.1 += v * val;
@@ -256,7 +256,7 @@ impl<T: Ord + Clone> Div for &Bin<T> {
 }
 
 /// Specialize a bin power by substituting a variable with a literal
-impl<T: Ord + fmt::Display + Clone> Specializable<T> for Bin<T> {
+impl<T: Ord + fmt::Display + Clone> Specializable<T, u8> for Bin<T> {
     fn specialize(&mut self, id: &T, val: u8) {
         self.exp.specialize(id, val)
     }

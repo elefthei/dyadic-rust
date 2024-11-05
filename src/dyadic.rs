@@ -3,8 +3,7 @@ use std::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, DivAssign};
 use pretty::{BoxAllocator, Pretty, DocAllocator, DocBuilder};
 use crate::context::{Ctx, Set};
 use crate::traits::{Specializable, Normalizable};
-use crate::bin::{Bin, Lin};
-use std::collections::BTreeMap;
+use crate::bin::Bin;
 
 #[cfg(test)]
 use crate::assert_eqn;
@@ -163,7 +162,7 @@ impl<T: Ord> From<i32> for Mono<T> {
     }
 }
 
-impl<T: fmt::Display + Ord + Clone> Specializable<T> for Mono<T> {
+impl<T: fmt::Display + Ord + Clone> Specializable<T, u8> for Mono<T> {
     // ex: 12*a^2*b^3*2^(c+1) -> a = 2 -> 48*b^3*2^(c+3)
     fn specialize(&mut self, id: &T, val: u8) {
         if let Some(v) = self.terms.remove(&id) {
@@ -654,7 +653,7 @@ impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for Dyadic<T> {
         Ok(d)
     }
 }
-impl<T: Ord + fmt::Display + Clone> Specializable<T> for Dyadic<T> {
+impl<T: Ord + fmt::Display + Clone> Specializable<T, u8> for Dyadic<T> {
     fn specialize(&mut self, id: &T, val: u8) {
         self.numer.modify(|x| x.specialize(id, val));
         self.denom.specialize(id, val);

@@ -1,7 +1,7 @@
 use crate::context::{Set, Ctx};
 
-pub trait Specializable<T> {
-    fn specialize(&mut self, id: &T, val: u8)
+pub trait Specializable<T, V> {
+    fn specialize(&mut self, id: &T, val: V)
     where
         Self: Sized;
 
@@ -11,12 +11,13 @@ pub trait Specializable<T> {
         self.free_vars().is_empty()
     }
 
-    fn specialize_all(&mut self, ctx: Ctx<T, u8>)
+    fn specialize_all(&mut self, ctx: Ctx<T, V>)
     where
         T: Ord + Clone,
+        V: Clone,
         Self: Sized {
         for (id, val) in ctx.iter() {
-            self.specialize(id, *val);
+            self.specialize(id, val.clone());
         }
     }
 }
