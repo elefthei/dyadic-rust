@@ -331,41 +331,43 @@ impl<V: Ord> Set<V> {
     pub fn singleton(v: V) -> Self {
         Set(BTreeSet::from([v]))
     }
-    pub fn insert_with(&mut self, k: V, f: impl Fn(V) -> V) {
+    pub fn insert_with(&mut self, k: V, f: impl Fn(V) -> V) -> bool {
         if self.0.remove(&k) {
-            self.0.insert(f(k));
+            self.0.insert(f(k))
         } else {
-            self.0.insert(k);
+            self.0.insert(k)
         }
     }
 
-    pub fn insert(&mut self, k: V) {
-        self.0.insert(k);
+    pub fn insert(&mut self, k: V) -> bool {
+        self.0.insert(k)
     }
 
-    pub fn append_with<FF, It>(&mut self, it: It, f: &FF) -> &mut Self
+    pub fn append_with<FF, It>(&mut self, it: It, f: &FF) -> bool
     where
         FF: Fn(V) -> V,
         It: Iterator<Item = V>,
     {
+        let mut ins = false;
         for k in it {
-            self.insert_with(k, f);
+            ins |= self.insert_with(k, f)
         }
-        self
+        ins
     }
 
     pub fn pop_first(&mut self) -> Option<V> {
         self.0.pop_first()
     }
 
-    pub fn append<It>(&mut self, it: It) -> &mut Self
+    pub fn append<It>(&mut self, it: It) -> bool
     where
         It: Iterator<Item = V>,
     {
+        let mut ins = false;
         for k in it {
-            self.0.insert(k);
+            ins |= self.0.insert(k)
         }
-        self
+        ins
     }
     pub fn first(&self) -> Option<&V> {
         self.0.iter().next()
