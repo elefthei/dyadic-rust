@@ -13,7 +13,7 @@ use crate::bin::Bin;
 /// a: [F; 2^n] + b: [F; 2^(3+m)] : [F; 2^n + 2^(3+m)]
 /// ```
 /// BinGroup eg: 3*2^n + 4*2^(3-m) /
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct BinGroup<T>(Ctx<Bin<T>, i32>);
 
 impl<T: Ord> BinGroup<T> {
@@ -29,22 +29,28 @@ impl<T: Ord> BinGroup<T> {
     pub fn var(v: T) -> Self {
         BinGroup(Ctx::singleton(Bin::var(v), 1))
     }
-
     pub fn bin(b: Bin<T>) -> Self {
         BinGroup(Ctx::singleton(b, 1))
     }
-
-    // Unit of addition
+    /// Unit of addition
     pub fn zero() -> Self {
         BinGroup(Ctx::new())
     }
-    // Unit of multiplication (2^0)
+    /// Unit of multiplication (2^0)
     pub fn one() -> Self {
         BinGroup(Ctx::singleton(Bin::default(), 1))
     }
-    // -p
+    /// -p
     pub fn neg(self) -> Self {
         BinGroup(self.0.into_iter().map(|(k, v)| (k, -v)).collect())
+    }
+    /// Maximum element
+    pub fn max() -> Self {
+        BinGroup(Ctx::singleton(Bin::max(), i32::MAX))
+    }
+    /// Minimum element
+    pub fn min() -> Self {
+        BinGroup(Ctx::singleton(Bin::max(), i32::MIN))
     }
 }
 

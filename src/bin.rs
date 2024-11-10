@@ -24,7 +24,10 @@ impl<T: Ord> Bin<T> {
         Bin { exp: Lin::lit(a) }
     }
     pub fn var(v: T) -> Self {
-        Bin{ exp: Lin::var(v) }
+        Bin { exp: Lin::var(v) }
+    }
+    pub fn one() -> Self {
+        Bin { exp: Lin::zero() }
     }
     /// Partial order extends to [Bin] as [2^-] is monotone
     pub fn leq(&self, other: &Self) -> bool where T: Clone {
@@ -55,6 +58,14 @@ impl<T: Ord> Bin<T> {
     /// Greatest common divisor of two exponents of two
     pub fn glb(&self, other: &Self) -> Self where T: Clone {
         Bin { exp : self.exp.clone().glb(other.exp.clone()) }
+    }
+    /// Biggest element
+    pub fn max() -> Self {
+        Bin { exp: Lin::lit(i32::MAX) }
+    }
+    /// Smallest binary power is 1
+    pub fn min() -> Self {
+        Bin::one()
     }
 }
 
