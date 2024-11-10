@@ -1,8 +1,7 @@
-use std::{fmt, ops::Deref};
-use crate::context::{Ctx, Set};
+use crate::context::Set;
 use pretty::{Pretty, DocBuilder, DocAllocator, BoxAllocator};
 use crate::lin::Lin;
-
+use std::fmt;
 use itertools::Itertools;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -136,16 +135,15 @@ impl<Id: Clone + Ord> MinMaxGroup<Id> {
             }).collect();
 
         let cloned = terms.clone();
-        // Absorption: max(a,min(a,b)) = a
+
+        // Absorption: max(a, min(a,b)) = a
         terms.retain(|form| {
-                !cloned.iter().any(|other| {
-                    if let MinMaxGroup::Min(min_terms) = other {
-                        min_terms.contains(form)
-                    } else {
-                        false
-                    }
-                })
-            });
+            if let MinMaxGroup::Min(min_terms) = form {
+                !cloned.iter().any(|other| min_terms.contains(other))
+            } else {
+                true
+            }
+        });
 
         match terms.len() {
             0 => MinMaxGroup::Term(Lin::lit(i32::MIN)),  // Identity for max
@@ -172,16 +170,14 @@ impl<Id: Clone + Ord> MinMaxGroup<Id> {
             }).collect();
 
         let cloned = terms.clone();
-        // Absorption: max(a,min(a,b)) = a
+        // Absorption: min(a, max(a,b)) = a
         terms.retain(|form| {
-                !cloned.iter().any(|other| {
-                    if let MinMaxGroup::Max(max_terms) = other {
-                        max_terms.contains(form)
-                    } else {
-                        false
-                    }
-                })
-            });
+            if let MinMaxGroup::Max(max_terms) = form {
+                !cloned.iter().any(|other| max_terms.contains(other))
+            } else {
+                true
+            }
+        });
 
         match terms.len() {
             0 => MinMaxGroup::Term(Lin::lit(i32::MAX)),  // Identity for max
@@ -189,10 +185,54 @@ impl<Id: Clone + Ord> MinMaxGroup<Id> {
             _ => MinMaxGroup::Min(terms),  // BTreeSet handles idempotence and commutativity
         }
     }
+
+    pub fn zero() -> Self {
+        MinMaxGroup::Term(Lin::zero())
+    }
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+/// Pretty printing, display and Arbitrary for BinGroup
+//////////////////////////////////////////////////////////////////////////////////////////////
+impl<'a, D, A, T> Pretty<'a, D, A> for MinMaxGroup<T>
+where
+    D: DocAllocator<'a, A>,
+    T: Pretty<'a, D, A> + Clone + Ord,
+    D::Doc: Clone,
+    A: 'a + Clone,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        match self {
+            MinMaxGroup::Max(terms) =>
+                allocator.concat([
+                    allocator.text("max {"),
+                    allocator.intersperse(terms.into_iter().map(|term| term.pretty(allocator)),
+                        allocator.text(", ")),
+                    allocator.text("}")
+                ]),
+            MinMaxGroup::Min(terms) =>
+                allocator.concat([
+                    allocator.text("min {"),
+                    allocator.intersperse(terms.into_iter().map(|term| term.pretty(allocator)),
+                        allocator.text(", ")),
+                    allocator.text("}")
+                ]),
+            MinMaxGroup::Term(term) => term.pretty(allocator),
+        }
+    }
+}
 
-#[cfg(test)] use crate::id::Id;
+/// Display instance calls the pretty printer
+impl<'a, T> fmt::Display for MinMaxGroup<T>
+where
+    T: Pretty<'a, BoxAllocator, ()> + Clone + Ord,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <MinMaxGroup<T> as Pretty<'_, BoxAllocator, ()>>::pretty(self.clone(), &BoxAllocator)
+            .1
+            .render_fmt(100, f)
+    }
+}
 
 #[test]
 fn test_minmax_idempotence() {
@@ -206,9 +246,14 @@ fn test_minmax_idempotence() {
 fn test_minmax_absorption() {
     let a = MinMaxGroup::var("a");
     let b = MinMaxGroup::var("b");
+    // min(a, max(a,b)) = a
+    let min_a_maxab =
+        MinMaxGroup::min([a.clone(), MinMaxGroup::max([a.clone(), b.clone()])]);
+    assert_eq!(min_a_maxab, a);
+
     // max(a,min(a,b)) = a
-    let min_ab = MinMaxGroup::min([a.clone(), b.clone()]);
-    let max_a_minab = MinMaxGroup::max([a.clone(), min_ab]);
+    let max_a_minab =
+        MinMaxGroup::max([a.clone(), MinMaxGroup::min([a.clone(), b.clone()])]);
     assert_eq!(max_a_minab, a);
 }
 

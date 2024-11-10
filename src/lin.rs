@@ -70,23 +70,13 @@ impl <Id: Ord> Lin<Id> {
         }
         Lin { terms, c: -self.c }
     }
-    /// Define a partial order for linear, positive expressions
+    /// Define a partial order for linear expressions with positive variable assignments
     /// true:  2*a + b <= 3*a + b + c
     ///        {} <= a
     /// false: 4*a <= 3*a + b + c
     ///        b <= c
-    pub fn leq(&self, other: &Self) -> bool {
-        let mut le = true;
-        for (k, v) in self.terms.iter() {
-            if let Some(vr) = other.terms.get(&k) {
-                if v > vr {
-                    le = false;
-                }
-            } else {
-                le = false;
-            }
-        }
-        le && self.c <= other.c
+    pub fn leq(&self, other: &Self) -> bool where Id: Clone {
+        (other - self).terms.values().all(|v| *v >= 0) && (other - self).c >= 0
     }
 
     /// Least-upper bound of two linear terms
@@ -110,6 +100,7 @@ impl<Id: Ord> AddAssign for Lin<Id> {
     /// Add two linear terms
     fn add_assign(&mut self, other: Self) {
         self.terms.append_with(other.terms.into_iter(), &|a, b| a + b);
+        self.terms.retain(|_, v| *v != 0);
         self.c += other.c;
     }
 }
@@ -138,6 +129,7 @@ impl<Id: Ord> SubAssign for Lin<Id> {
     /// Subtract two linear terms
     fn sub_assign(&mut self, other: Self) {
         self.terms.append_with(other.terms.into_iter().map(|(k, v)| (k, -v)), &|a, b| a + b);
+        self.terms.retain(|_, v| *v != 0);
         self.c -= other.c;
     }
 }
@@ -211,18 +203,22 @@ where
             allocator.text(format!("{}", self.c))
         } else {
             allocator.text(format!("{}", self.c))
-                .append(
-                    allocator.concat(
+                .append(allocator.concat(
                         self.terms.into_iter()
                             .map(|(k, v)|
                                 if v == 0 {
                                     allocator.nil()
                                 } else if v == 1 {
-                                    allocator.text(" + ").append(k.pretty(allocator))
+                                    allocator.text("+").append(k.pretty(allocator))
+                                } else if v < 0 {
+                                    allocator.text("-")
+                                        .append(allocator.text(format!("{}", -v)).append(k.pretty(allocator)))
                                 } else {
-                                    allocator.text(" - ")
-                                        .append(allocator.text(v.to_string()).append(k.pretty(allocator)))
-                                }))
+                                    allocator.text("+")
+                                        .append(allocator.text(format!("{}", v)).append(k.pretty(allocator)))
+                                })
+                            .collect::<Vec<_>>()
+                        )
                 )
         }
     }

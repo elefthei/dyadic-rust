@@ -172,9 +172,11 @@ impl<K: Ord, V> Ctx<K, V> {
     {
         self.0.remove(k)
     }
-
     pub fn keys(&self) -> Set<&K> {
-        Set::from(self.0.keys().collect::<Vec<_>>())
+        Set(self.0.keys().collect::<BTreeSet<_>>())
+    }
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.0.values()
     }
     pub fn contains(&self, k: &K) -> bool {
         self.0.contains_key(k)

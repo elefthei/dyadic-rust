@@ -27,7 +27,7 @@ impl<T: Ord> Bin<T> {
         Bin{ exp: Lin::var(v) }
     }
     /// Partial order extends to [Bin] as [2^-] is monotone
-    pub fn leq(&self, other: &Self) -> bool {
+    pub fn leq(&self, other: &Self) -> bool where T: Clone {
         self.exp.leq(&other.exp)
     }
     /// Logarithm with "remainder"
@@ -276,15 +276,15 @@ fn test_bin_leq_prop() {
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
         let b = u.arbitrary::<Bin<Id>>()?;
-        assert!(a.leq(&(&a * &b)));
-        assert!(b.leq(&(&a * &b)));
+        assert!(a.leq(&(&a * &b)), "{} <= ({} * {} = {})", a, a, b, &a * &b);
+        assert!(b.leq(&(&a * &b)), "{} <= ({} * {} = {})", b, a, b, &a * &b);
         Ok(())
     });
     // Div less than terms
     arbtest(|u| {
         let a = u.arbitrary::<Bin<Id>>()?;
         let b = u.arbitrary::<Bin<Id>>()?;
-        assert!((&a / &b).leq(&a));
+        assert!((&a / &b).leq(&a), "({} / {} = {}) <= {}", a, b, &a / &b, a);
         Ok(())
     });
 }
