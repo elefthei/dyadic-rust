@@ -1,62 +1,37 @@
 use crate::context::{Set, Ctx};
+use thiserror::Error;
+use std::fmt;
 
-pub trait Specializable<T, V> {
-    fn specialize(&mut self, id: &T, val: V)
-    where
-        Self: Sized;
+#[derive(PartialEq, Eq, Error, Debug)]
+pub enum EvalError<Id: Ord + Clone + fmt::Display, E> {
+    #[error("Unbounded variables found: {0}.")]
+    FreeVars(Set<Id>),
+    #[error(transparent)]
+    ReflectError(#[from] E),
+}
 
-    fn free_vars(&self) -> Set<&T>;
+pub trait Eval<Id: Ord + Clone + fmt::Display, V: Clone> {
+    type ReflectError;
+    fn specialize(&mut self, id: &Id, val: V);
+    fn reflect(&self) -> Result<V, Self::ReflectError>;
+    fn free_vars(&self) -> Set<&Id>;
 
-    fn is_closed(&self) -> bool where T: Ord {
+    fn is_closed(&self) -> bool where Id: Ord {
         self.free_vars().is_empty()
     }
 
-    fn specialize_all(&mut self, ctx: Ctx<T, V>)
-    where
-        T: Ord + Clone,
-        V: Clone,
-        Self: Sized {
+    fn specialize_all(&mut self, ctx: Ctx<Id, V>) {
         for (id, val) in ctx.iter() {
             self.specialize(id, val.clone());
         }
     }
-}
 
-/// A term that can be normalized
-pub trait Normalizable {
-    fn normalize(&mut self);
-
-    /// Check if it is in normal form by syntactic equality
-    fn is_normal(&self) -> bool where Self: Clone + Eq {
-        let mut clone = self.clone();
-        clone.normalize();
-        self == &clone
-    }
-
-    /// Equality modulo normalization
-    fn eqn(&self, other: &Self) -> bool where Self: Eq + Clone {
-        let mut self_clone = self.clone();
-        let mut other_clone = other.clone();
-        self_clone.normalize();
-        other_clone.normalize();
-        self_clone == other_clone
-    }
-}
-
-// Match two expressions, like `assert_eqn!(a, b)` modulo beta-equivalence
-#[cfg(test)]
-#[macro_export]
-macro_rules! assert_eqn {
-    ($left:expr, $right:expr) => ({
-        if !Normalizable::eqn(&$left, &$right) {
-            let mut l = $left.clone();
-            let mut r = $right.clone();
-            l.normalize();
-            r.normalize();
-            panic!(
-                "Assertion failed: `assert_eqn!({}, {})`\n  left (pre): `{}`,\n  right (pre): `{}`,\n  left (post): `{}`,\n  right (post): `{}`",
-                stringify!($left), stringify!($right), $left, $right, l, r,
-            );
+    fn eval(&mut self, ctx: Ctx<Id, V>) -> Result<V, EvalError<Id, Self::ReflectError>> {
+        self.specialize_all(ctx);
+        if self.is_closed() {
+            Ok(self.reflect()?)
+        } else {
+            Err(EvalError::FreeVars(self.free_vars().cloned()))
         }
-    });
+    }
 }

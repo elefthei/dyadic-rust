@@ -77,20 +77,6 @@ where
     }
 }
 
-#[cfg(test)] use arbitrary::{Arbitrary, Unstructured};
-/// Arbitrary instance for Ctx
-#[cfg(test)]
-impl<'a, K: Arbitrary<'a> + Ord> Arbitrary<'a> for Ctx<K, u8> {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self, arbitrary::Error> {
-        let n: u8 = u.int_in_range(0..=9)?;
-        let mut vars = BTreeMap::new();
-        for _ in 0..n {
-            vars.insert(K::arbitrary(u)?, u.int_in_range(0..=12)?);
-        }
-        Ok(Ctx(vars))
-    }
-}
-
 /// Special and wrapper methods for Ctx
 impl<K: Ord, V> Ctx<K, V> {
     pub fn new() -> Self {
@@ -101,6 +87,9 @@ impl<K: Ord, V> Ctx<K, V> {
         Ctx(BTreeMap::from([(k, v)]))
     }
 
+    pub fn find<FF>(&self, f: FF) -> Option<(&K, &V)> where FF: Fn(&K, &V) -> bool {
+        self.0.iter().find(|(k, v)| f(k, v))
+    }
     pub fn insert_with<FF>(&mut self, k: K, v1: V, f: &FF)
     where
         V:Clone,
@@ -210,6 +199,9 @@ impl<K: Ord, V> Ctx<K, V> {
         self.0.retain(f);
     }
 
+    pub fn entry(&mut self, k: K) -> std::collections::btree_map::Entry<K, V> {
+        self.0.entry(k)
+    }
     pub fn extract_if(&mut self, f: impl Fn(&K, &V) -> bool) -> Ctx<K, V>
     where
         K: Clone,
@@ -242,7 +234,7 @@ impl<X, Y, K: From<X> + Ord, V: From<Y>, const N: usize> From<[(X, Y); N]> for C
 ///////////////////////////////////////////////////////////////////////////////////
 // A set of values with Pretty and Display traits and other useful methods
 ///////////////////////////////////////////////////////////////////////////////////
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Set<V>(BTreeSet<V>);
 
 /// Pretty printer instance
@@ -337,6 +329,10 @@ impl<V: Ord> Set<V> {
         } else {
             self.0.insert(k)
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 
     pub fn insert(&mut self, k: V) -> bool {
@@ -442,15 +438,8 @@ impl<V: Ord> Set<V> {
     }
 }
 
-/// Arbitrary instance for Set
-#[cfg(test)]
-impl<'a, K: Arbitrary<'a> + Ord> Arbitrary<'a> for Set<K> {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self, arbitrary::Error> {
-        let n: u8 = u.int_in_range(0..=9)?;
-        let mut vars = BTreeSet::new();
-        for _ in 0..n {
-            vars.insert(K::arbitrary(u)?);
-        }
-        Ok(Set(vars))
+impl<V: Ord + Clone> Set<&V> {
+    pub fn cloned(self) -> Set<V> {
+        Set(self.0.into_iter().cloned().collect())
     }
 }
