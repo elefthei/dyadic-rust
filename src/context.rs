@@ -331,12 +331,11 @@ impl<V: Ord> Set<V> {
     pub fn singleton(v: V) -> Self {
         Set(BTreeSet::from([v]))
     }
-    pub fn insert_with(&mut self, k: V, f: impl Fn(V) -> V) -> bool {
-        if self.0.remove(&k) {
-            self.0.insert(f(k))
-        } else {
-            self.0.insert(k)
+    pub fn insert_with(&mut self, mut k: V, f: impl Fn(V) -> V) -> bool {
+        while self.0.remove(&k) {
+            k = f(k);
         }
+        self.0.insert(k)
     }
 
     pub fn insert(&mut self, k: V) -> bool {
@@ -434,7 +433,7 @@ impl<V: Ord> Set<V> {
     where
         V: Clone
     {
-        self.0.extract_if(f).collect()
+        self.0.extract_if(.., f).collect()
     }
 
     pub fn retain(&mut self, f: impl Fn(&V) -> bool) {

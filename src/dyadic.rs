@@ -668,7 +668,7 @@ impl<T: Ord + Clone> Normalizable for Dyadic<T> {
     fn normalize(&mut self) {
         // 1. Normalize numerator and remove zero terms
         self.numer.modify(|x| x.normalize());
-        self.numer.retain(|x| x.mult > 0);
+        self.numer.retain(|x| x.mult != 0);
 
         // 2. Take denominator and normalize it
         let mut acc = self.denom.clone();
