@@ -169,6 +169,15 @@ impl<T: Ord> Bin<T> {
     pub fn var(v: T) -> Self {
         Bin{ exp: Lin::var(v) }
     }
+    /// Splits `2^(sym + lit)` into its symbolic part, without zero coefficients, and its literal part
+    pub(crate) fn into_parts(self) -> (Ctx<T, u8>, u8) {
+        let Lin(mut sym, lit) = self.exp;
+        sym.retain(|_, v| *v > 0);
+        (sym, lit)
+    }
+    pub(crate) fn from_parts(sym: Ctx<T, u8>, lit: u8) -> Self {
+        Bin { exp: Lin(sym, lit) }
+    }
     pub fn double(self) -> Self where T: Clone {
         Bin { exp: self.exp + Lin::lit(1) }
     }
