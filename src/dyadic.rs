@@ -257,6 +257,10 @@ pub struct Dyadic<T> { numer: Set<Mono<T>>, denom: Bin<T> }
 
 impl<T: Ord> Dyadic<T> {
     pub fn lit(i: i32) -> Self {
+        // Zero is the empty sum, the normal form of `0 * 2^0`
+        if i == 0 {
+            return Dyadic::unit_add();
+        }
         Dyadic {
             numer: Set::singleton(Mono::lit(i)),
             denom: Bin::default()
@@ -783,6 +787,15 @@ fn test_dyadic_add_mono_unit() {
     // X / 2 + 1 = (X + 2) / 2: the added term is scaled by the denominator
     let a = Dyadic::var("X").div_bin(&Bin::lit(1));
     assert_eqn!(a.clone() + Mono::lit(1), &a + &Dyadic::lit(1));
+}
+
+#[test]
+fn test_dyadic_lit_normal_unit() {
+    // Literals are built in normal form, including zero and i32::MIN = -1 * 2^31
+    for i in [0, 1, -1, 12, i32::MAX, i32::MIN] {
+        assert!(Dyadic::<&str>::lit(i).is_normal(), "lit({i}) is not in normal form");
+    }
+    assert_eqn!(Dyadic::<&str>::lit(i32::MIN), Dyadic::<&str>::lit(-1) * Dyadic::bin(Bin::lit(31)));
 }
 
 #[test]
