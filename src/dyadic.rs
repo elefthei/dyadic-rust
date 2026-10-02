@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt;
 use std::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, DivAssign};
 use pretty::{BoxAllocator, Pretty, DocAllocator, DocBuilder};
@@ -166,7 +167,7 @@ impl<T: fmt::Display + Ord + Clone> Specializable<T, u8> for Mono<T> {
     // ex: 12*a^2*b^3*2^(c+1) -> a = 2 -> 48*b^3*2^(c+3)
     fn specialize(&mut self, id: &T, val: u8) {
         if let Some(v) = self.terms.remove(&id) {
-            self.mult *= val.pow(v as u32) as i32;
+            self.mult *= i32::from(val).pow(u32::from(v));
             // We already performed [id] substitution so don't fail
             self.bin.specialize(id, val);
             self.normalize();
@@ -256,6 +257,10 @@ pub struct Dyadic<T> { numer: Set<Mono<T>>, denom: Bin<T> }
 
 impl<T: Ord> Dyadic<T> {
     pub fn lit(i: i32) -> Self {
+        // Zero is the empty sum, the normal form of `0 * 2^0`
+        if i == 0 {
+            return Dyadic::unit_add();
+        }
         Dyadic {
             numer: Set::singleton(Mono::lit(i)),
             denom: Bin::default()
@@ -330,7 +335,7 @@ impl<T: Ord + Clone> AddAssign<Mono<T>> for Dyadic<T> {
         // Sum multipliers
         let mult = join.into_iter().fold(mono.mult, |acc, x| acc + x.mult);
         if mult != 0 {
-            self.numer.insert(Mono { mult, terms: other.terms, bin: other.bin });
+            self.numer.insert(Mono { mult, terms: mono.terms, bin: mono.bin });
         }
     }
 }
@@ -655,7 +660,13 @@ impl<'a, T: Ord + Clone + Arbitrary<'a>> Arbitrary<'a> for Dyadic<T> {
 }
 impl<T: Ord + fmt::Display + Clone> Specializable<T, u8> for Dyadic<T> {
     fn specialize(&mut self, id: &T, val: u8) {
-        self.numer.modify(|x| x.specialize(id, val));
+        // Specialized terms can coincide, so duplicates are merged by doubling rather than dropped
+        let mut numer = Set::new();
+        for mut mono in std::mem::take(&mut self.numer) {
+            mono.specialize(id, val);
+            numer.insert_with(mono, |term| term.double());
+        }
+        self.numer = numer;
         self.denom.specialize(id, val);
     }
 
@@ -666,9 +677,34 @@ impl<T: Ord + fmt::Display + Clone> Specializable<T, u8> for Dyadic<T> {
 
 impl<T: Ord + Clone> Normalizable for Dyadic<T> {
     fn normalize(&mut self) {
-        // 1. Normalize numerator and remove zero terms
-        self.numer.modify(|x| x.normalize());
-        self.numer.retain(|x| x.mult > 0);
+        // 1. Sum like terms: terms with the same variables and the same symbolic part of the
+        //    binary exponent differ only in the literal part of that exponent, so they merge into
+        //    one term with an odd multiplier. Exponents within a group are summed exactly.
+        let mut groups: BTreeMap<(Ctx<T, u8>, Ctx<T, u8>), BTreeMap<u8, i128>> = BTreeMap::new();
+        for mut mono in std::mem::take(&mut self.numer) {
+            mono.normalize();
+            let (sym, lit) = mono.bin.into_parts();
+            *groups.entry((mono.terms, sym)).or_default().entry(lit).or_default() += i128::from(mono.mult);
+        }
+        for ((terms, sym), exps) in groups {
+            // Horner evaluation from the highest literal exponent down: sum = acc * 2^at
+            let (mut acc, mut at) = (0i128, 0u8);
+            for (&lit, &mult) in exps.iter().rev() {
+                if acc != 0 {
+                    acc = 2i128.checked_pow(u32::from(at - lit))
+                        .and_then(|scale| acc.checked_mul(scale))
+                        .expect("dyadic coefficient overflow");
+                }
+                acc = acc.checked_add(mult).expect("dyadic coefficient overflow");
+                at = lit;
+            }
+            if acc != 0 {
+                let shift = acc.trailing_zeros();
+                let mult = i32::try_from(acc >> shift).expect("dyadic coefficient overflow");
+                let lit = u8::try_from(shift).ok().and_then(|s| at.checked_add(s)).expect("dyadic exponent overflow");
+                self.numer.insert(Mono { mult, terms, bin: Bin::from_parts(sym, lit) });
+            }
+        }
 
         // 2. Take denominator and normalize it
         let mut acc = self.denom.clone();
@@ -682,15 +718,6 @@ impl<T: Ord + Clone> Normalizable for Dyadic<T> {
         // Divide both numerator and denominator by the GCD
         self.numer.modify(|x| *x = x.div_bin(&acc).0);
         self.denom = self.denom.clone().div(acc).0;
-
-        // Make a reverse map of all mono terms to their multipliers
-        let mut hm: Ctx<(&Ctx<T, u8>, Bin<T>), i32> = Ctx::new();
-
-        // Cancel out terms
-        for l in self.numer.iter() {
-            hm.insert_with((&l.terms, l.bin.clone()), l.mult, &|a, b| a + b);
-        }
-        self.numer = hm.into_iter().map(|((t, b), m)| Mono { terms: t.clone(), bin: b, mult: m }).collect();
     }
 }
 
@@ -753,6 +780,22 @@ fn test_dyadic_add_comm_unit() {
     let a = Dyadic::lit(2)*Dyadic::var("X")*Dyadic::bin(Bin::lit(2)* Bin::var("y"));
     let b = Dyadic::lit(3)*Dyadic::var("Y")*Dyadic::bin(Bin::lit(0)* Bin::var("x"));
     assert_eqn!(&a + &b, &b + &a);
+}
+
+#[test]
+fn test_dyadic_add_mono_unit() {
+    // X / 2 + 1 = (X + 2) / 2: the added term is scaled by the denominator
+    let a = Dyadic::var("X").div_bin(&Bin::lit(1));
+    assert_eqn!(a.clone() + Mono::lit(1), &a + &Dyadic::lit(1));
+}
+
+#[test]
+fn test_dyadic_lit_normal_unit() {
+    // Literals are built in normal form, including zero and i32::MIN = -1 * 2^31
+    for i in [0, 1, -1, 12, i32::MAX, i32::MIN] {
+        assert!(Dyadic::<&str>::lit(i).is_normal(), "lit({i}) is not in normal form");
+    }
+    assert_eqn!(Dyadic::<&str>::lit(i32::MIN), Dyadic::<&str>::lit(-1) * Dyadic::bin(Bin::lit(31)));
 }
 
 #[test]

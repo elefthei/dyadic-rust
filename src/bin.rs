@@ -169,6 +169,15 @@ impl<T: Ord> Bin<T> {
     pub fn var(v: T) -> Self {
         Bin{ exp: Lin::var(v) }
     }
+    /// Splits `2^(sym + lit)` into its symbolic part, without zero coefficients, and its literal part
+    pub(crate) fn into_parts(self) -> (Ctx<T, u8>, u8) {
+        let Lin(mut sym, lit) = self.exp;
+        sym.retain(|_, v| *v > 0);
+        (sym, lit)
+    }
+    pub(crate) fn from_parts(sym: Ctx<T, u8>, lit: u8) -> Self {
+        Bin { exp: Lin(sym, lit) }
+    }
     pub fn double(self) -> Self where T: Clone {
         Bin { exp: self.exp + Lin::lit(1) }
     }
@@ -184,18 +193,16 @@ impl<T: Ord> Bin<T> {
     pub fn leq(&self, other: &Self) -> bool {
         self.exp.leq(&other.exp)
     }
-    /// Logarithm with remainder
-    /// ex: log2(9) = (3, 1)
-    ///     log(-129) = (7, -1)
+    /// Logarithm with remainder: `u = rem * 2^exp` with `rem` odd, or `(2^0, 0)` for zero
+    /// ex: log2(12) = (2^2, 3)
+    ///     log2(-128) = (2^7, -1)
     pub fn log2(u: i32) -> (Bin<T>, i32) {
-        let mut exp = 0;
-        let mut um = u.abs();
-
-        while um % 2 == 0 && um > 0 {
-            exp += 1;
-            um /= 2;
+        if u == 0 {
+            return (Bin::default(), 0);
         }
-        (Bin { exp: Lin::lit(exp) }, if u > 0 { um } else { -um })
+        // At most 31, and the arithmetic shift is exact, including for i32::MIN
+        let exp = u.trailing_zeros();
+        (Bin { exp: Lin::lit(exp as u8) }, u >> exp)
     }
 
     /// Least common multiple of two exponents of two
