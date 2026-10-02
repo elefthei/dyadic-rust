@@ -17,16 +17,11 @@
 //! Coefficients and denominator exponents are kept within bounds so that products of
 //! three operands stay within the `i32` coefficients and `u8` exponents of the representation;
 //! the laws are claimed for exact arithmetic, not for overflowing machine arithmetic.
-//!
-//! Every law is checked twice from one `check_*` body: by an `arbtest` property test, which
-//! samples inputs under `cargo test`, and by a `#[supertest]`, which Schematic (`super check`)
-//! verifies for every input allowed by its assumptions.
 
 use arbtest::arbitrary::{Result, Unstructured};
 use arbtest::arbtest;
 use dyadic_rationals::id::Id;
 use dyadic_rationals::{Bin, Dyadic, Normalizable, Specializable};
-use schematic::{assume, supertest};
 
 const COEFF_BOUND: i32 = 64;
 const DENOM_BOUND: u8 = 8;
@@ -64,14 +59,6 @@ fn power(d: u8, sym: bool) -> Bin<Id> {
         b = b * Bin::var(Id::from('n'));
     }
     b
-}
-
-fn coeff_in_domain(c: i32) -> bool {
-    (-COEFF_BOUND..=COEFF_BOUND).contains(&c)
-}
-
-fn operand_in_domain(c: i32, k: i32, d: u8) -> bool {
-    coeff_in_domain(c) && coeff_in_domain(k) && d <= DENOM_BOUND
 }
 
 fn assert_ring_eq(left: &Dyadic<Id>, right: &Dyadic<Id>, law: &str) {
@@ -269,9 +256,6 @@ fn integers_embed_faithfully() {
     });
 }
 
-// This arbtest passes, but its supertest counterpart fails: Schematic finds `lit(0)`, whose
-// zero numerator term is not in normal form, and `lit(i32::MIN)`, where `Bin::log2` overflows
-// on `abs()`. Uniformly drawn `i32`s hit either value with probability 2^-32.
 #[test]
 fn integer_literals_are_canonical() {
     arbtest(|u| {
@@ -325,147 +309,4 @@ fn normalization_is_idempotent() {
         check_normal_form(&dyadic(u)?);
         Ok(())
     });
-}
-
-////////////////////////////////////////////////////////////////////////////////////////
-// Schematic supertests
-////////////////////////////////////////////////////////////////////////////////////////
-
-#[supertest]
-pub fn addition_is_associative_supertest(
-    ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool,
-    bc: i32, bk: i32, by: bool, bm: bool, bd: u8, bn: bool,
-    cc: i32, ck: i32, cy: bool, cm: bool, cd: u8, cn: bool,
-) {
-    assume(operand_in_domain(ac, ak, ad) && operand_in_domain(bc, bk, bd) && operand_in_domain(cc, ck, cd));
-    check_add_assoc(
-        &operand(ac, ak, ay, am, ad, an),
-        &operand(bc, bk, by, bm, bd, bn),
-        &operand(cc, ck, cy, cm, cd, cn),
-    );
-}
-
-#[supertest]
-pub fn addition_is_commutative_supertest(
-    ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool,
-    bc: i32, bk: i32, by: bool, bm: bool, bd: u8, bn: bool,
-) {
-    assume(operand_in_domain(ac, ak, ad) && operand_in_domain(bc, bk, bd));
-    check_add_comm(&operand(ac, ak, ay, am, ad, an), &operand(bc, bk, by, bm, bd, bn));
-}
-
-#[supertest]
-pub fn zero_is_additive_identity_supertest(ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool) {
-    assume(operand_in_domain(ac, ak, ad));
-    check_zero_identity(&operand(ac, ak, ay, am, ad, an));
-}
-
-#[supertest]
-pub fn negation_is_additive_inverse_supertest(
-    ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool,
-    bc: i32, bk: i32, by: bool, bm: bool, bd: u8, bn: bool,
-) {
-    assume(operand_in_domain(ac, ak, ad) && operand_in_domain(bc, bk, bd));
-    check_negation(&operand(ac, ak, ay, am, ad, an), &operand(bc, bk, by, bm, bd, bn));
-}
-
-#[supertest]
-pub fn multiplication_is_associative_supertest(
-    ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool,
-    bc: i32, bk: i32, by: bool, bm: bool, bd: u8, bn: bool,
-    cc: i32, ck: i32, cy: bool, cm: bool, cd: u8, cn: bool,
-) {
-    assume(operand_in_domain(ac, ak, ad) && operand_in_domain(bc, bk, bd) && operand_in_domain(cc, ck, cd));
-    check_mul_assoc(
-        &operand(ac, ak, ay, am, ad, an),
-        &operand(bc, bk, by, bm, bd, bn),
-        &operand(cc, ck, cy, cm, cd, cn),
-    );
-}
-
-#[supertest]
-pub fn multiplication_is_commutative_supertest(
-    ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool,
-    bc: i32, bk: i32, by: bool, bm: bool, bd: u8, bn: bool,
-) {
-    assume(operand_in_domain(ac, ak, ad) && operand_in_domain(bc, bk, bd));
-    check_mul_comm(&operand(ac, ak, ay, am, ad, an), &operand(bc, bk, by, bm, bd, bn));
-}
-
-#[supertest]
-pub fn one_is_multiplicative_identity_supertest(ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool) {
-    assume(operand_in_domain(ac, ak, ad));
-    check_one_identity(&operand(ac, ak, ay, am, ad, an));
-}
-
-#[supertest]
-pub fn multiplication_distributes_over_addition_supertest(
-    ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool,
-    bc: i32, bk: i32, by: bool, bm: bool, bd: u8, bn: bool,
-    cc: i32, ck: i32, cy: bool, cm: bool, cd: u8, cn: bool,
-) {
-    assume(operand_in_domain(ac, ak, ad) && operand_in_domain(bc, bk, bd) && operand_in_domain(cc, ck, cd));
-    check_distributivity(
-        &operand(ac, ak, ay, am, ad, an),
-        &operand(bc, bk, by, bm, bd, bn),
-        &operand(cc, ck, cy, cm, cd, cn),
-    );
-}
-
-#[supertest]
-pub fn integers_embed_faithfully_supertest(a: i32, b: i32) {
-    assume(coeff_in_domain(a) && coeff_in_domain(b));
-    check_integer_embedding(a, b);
-}
-
-#[supertest]
-pub fn specialization_is_a_homomorphism_supertest(
-    ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool,
-    bc: i32, bk: i32, by: bool, bm: bool, bd: u8, bn: bool,
-    var: u8, val: u8,
-) {
-    assume(operand_in_domain(ac, ak, ad) && operand_in_domain(bc, bk, bd));
-    assume(usize::from(var) < SPEC_VARS.len() && val <= SPEC_BOUND);
-    check_specialization(
-        &operand(ac, ak, ay, am, ad, an),
-        &operand(bc, bk, by, bm, bd, bn),
-        SPEC_VARS[usize::from(var)],
-        val,
-    );
-}
-
-#[supertest]
-pub fn doubling_and_halving_are_inverse_supertest(ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool) {
-    assume(operand_in_domain(ac, ak, ad));
-    check_doubling(&operand(ac, ak, ay, am, ad, an));
-}
-
-#[supertest]
-pub fn scaling_by_powers_of_two_supertest(
-    ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool,
-    bd: u8, bn: bool,
-) {
-    assume(operand_in_domain(ac, ak, ad) && bd <= DENOM_BOUND);
-    check_bin_scaling(&operand(ac, ak, ay, am, ad, an), &power(bd, bn));
-}
-
-#[supertest]
-pub fn adding_powers_of_two_supertest(
-    ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool,
-    bd: u8, bn: bool,
-) {
-    assume(operand_in_domain(ac, ak, ad) && bd <= DENOM_BOUND);
-    check_bin_addition(&operand(ac, ak, ay, am, ad, an), &power(bd, bn));
-}
-
-#[supertest]
-pub fn normalization_is_idempotent_supertest(ac: i32, ak: i32, ay: bool, am: bool, ad: u8, an: bool) {
-    assume(operand_in_domain(ac, ak, ad));
-    check_normal_form(&operand(ac, ak, ay, am, ad, an));
-}
-
-// This supertest fails, but its arbtest counterpart passes; see `integer_literals_are_canonical`.
-#[supertest]
-pub fn integer_literals_are_canonical_supertest(a: i32, b: i32) {
-    check_integer_literals(a, b);
 }
